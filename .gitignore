@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# pytest
+.pytest_cache/
+pytest-cache-files-*/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Aura runtime data (regenerated at runtime)
+.aura/self_model.db
+.aura/self_model.db-journal
+.aura/self_model.db-wal
+.aura/bridge/readiness_signal.json
+.aura/bridge/outcome_signal.json
+.aura/bridge/override_events.jsonl
+.aura/bridge/active_rules.json
+.aura/bridge/*.lock
+.aura/bridge/test_*.json
+.aura/models/
+.aura/validation_reports/
+.aura/patterns/run_log.json
+.aura/patterns/t*_patterns.json
+
+# Claude state (session-specific, not source)
+.claude/state.json
+.claude/learnings.md
+
+# Temp/staging
+src_aura_staging/
+
+# Environment
+.env
+.env.*

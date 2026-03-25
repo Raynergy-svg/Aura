@@ -1,0 +1,103 @@
+{
+  "phase": 9,
+  "title": "Adaptive Readiness, Temporal Decay & Trader Bias Detection",
+  "codename": "aura_phase9_adaptive_temporal",
+  "created": "2026-03-23",
+  "status": "complete",
+  "rationale": "Phase 8 added semantic signal intelligence (negation, intensity, cognitive load, fatigue, coaching). Web research + codebase gap analysis identified 3 critical gaps: (1) ReadinessModelV2 exists but is never wired into the primary compute path — static weights never learn from outcomes, (2) SelfModelGraph accumulates nodes forever with no decay or pruning — old stressors pollute pattern detection, (3) No detection of trading-specific cognitive biases (disposition effect, loss aversion, recency bias, confirmation bias) from conversation patterns. Phase 9 addresses adaptive weighting, temporal graph evolution, and bias detection — the highest-impact improvements for a self-improving system. LLM integration deferred to Phase 10.",
+  "stories": [
+    {
+      "id": "US-290",
+      "title": "Wire ReadinessModelV2 into primary compute path with V1 fallback",
+      "description": "ReadinessModelV2 (Ridge regression, 10 features) was built in Phase 3 but never integrated into ReadinessComputer.compute(). Wire it as the primary scorer when trained (>=20 samples), falling back to static V1 weights when untrained. This enables adaptive component weighting from trade outcomes.",
+      "acceptance": [
+        "ReadinessComputer accepts optional ReadinessModelV2 in constructor",
+        "compute() checks if V2 is trained (has_model=True, sample_count>=20)",
+        "When trained: use V2 prediction as readiness_score, log V1 score as fallback reference",
+        "When untrained: use V1 static weights (current behavior), log 'V1 fallback active'",
+        "ReadinessSignal includes 'model_version' field ('v1' or 'v2')",
+        "V2 prediction clamped to [0, 100] and blended with V1 if OOD detected",
+        "At least 6 tests: V1 fallback, V2 active, OOD blending, cold start, transition point, signal field"
+      ],
+      "passes": true,
+      "notes": "8 tests: v1_fallback_no_model, v1_fallback_untrained, v1_fallback_insufficient, v2_active, v2_clamped, v2_error_fallback, signal_field, cold_start_transition"
+    },
+    {
+      "id": "US-291",
+      "title": "Temporal decay on self-model graph nodes with recency-weighted queries",
+      "description": "Add time-decay to SelfModelGraph so that old nodes lose influence over time. Implement exponential decay (half-life ~14 days) with reinforcement on re-observation. Add get_effective_strength() that returns decay-weighted node strength.",
+      "acceptance": [
+        "Node properties extended with 'last_reinforced' timestamp and 'strength' (0.0-1.0, default 0.5)",
+        "decay(days_ago) = exp(-0.05 * days_ago) giving ~14-day half-life",
+        "get_effective_strength(node_id) applies decay to stored strength",
+        "reinforce_node(node_id) boosts strength on re-observation (spaced repetition: larger boost for longer gaps)",
+        "get_nodes_by_type() optionally filters by min_effective_strength",
+        "At least 6 tests: fresh node strength, decay after N days, reinforcement boost, dormant filtering, strength bounds, default values"
+      ],
+      "passes": true,
+      "notes": "7 tests: fresh_node, decay_14d, decay_60d, reinforce_boost, strength_bounds, defaults, filtered_query"
+    },
+    {
+      "id": "US-292",
+      "title": "Graph pruning with archive for dormant nodes",
+      "description": "Add prune_dormant_nodes() to SelfModelGraph that removes nodes with effective_strength < 0.05 and age > 60 days. Archive pruned nodes to .aura/archive/pruned_nodes.jsonl for audit trail.",
+      "acceptance": [
+        "prune_dormant_nodes(min_strength=0.05, min_age_days=60) removes qualifying nodes",
+        "Pruned nodes archived to .aura/archive/pruned_nodes.jsonl with timestamp and reason",
+        "Edges connected to pruned nodes are also removed (cascade delete)",
+        "Returns count of pruned nodes for logging",
+        "Archive file uses atomic append via persistence.py",
+        "At least 5 tests: no pruning needed, prune old weak nodes, preserve strong old nodes, cascade edges, archive written"
+      ],
+      "passes": true,
+      "notes": "5 tests: no_pruning_fresh, prune_old_weak, preserve_recently_reinforced, cascade_edges, archive_written"
+    },
+    {
+      "id": "US-293",
+      "title": "Trader cognitive bias detection from conversation patterns",
+      "description": "Add BiasDetector to ConversationProcessor that detects 4 trading-specific cognitive biases from message text: disposition effect (holding losers), loss aversion (disproportionate downside focus), recency bias (overweighting recent events), and confirmation bias (seeking validation). Returns per-bias scores that feed into readiness penalty.",
+      "acceptance": [
+        "BiasDetector class with detect_biases(message) returning dict of 4 bias scores (0.0-1.0 each)",
+        "Disposition effect: phrases like 'still waiting', 'might come back' vs 'stopped out', 'took profit'",
+        "Loss aversion: ratio of loss-words to gain-words exceeding 2:1 triggers score",
+        "Recency bias: temporal keywords ('today', 'just') vs historical ('historically', 'typically')",
+        "Confirmation bias: validation-seeking phrases ('proving me right', 'I knew it')",
+        "Aggregate bias_score added to ConversationSignals",
+        "ReadinessComputer applies bias penalty to override_discipline component",
+        "At least 8 tests: each bias type individually, combined biases, no-bias message, penalty integration"
+      ],
+      "passes": true,
+      "notes": "12 tests: disposition_detected, disposition_countered, loss_aversion, loss_balanced, recency, recency_countered, confirmation, no_bias, empty_msg, aggregate, penalty_integration, signals_field"
+    },
+    {
+      "id": "US-294",
+      "title": "Recency-weighted ML training for prediction models",
+      "description": "Add exponential recency weighting to ReadinessModelV2 and OverridePredictor training loops. Recent samples get weight 1.0, older samples decay with exp(-age_days/30). This enables faster adaptation to behavior changes.",
+      "acceptance": [
+        "Training buffer entries tagged with timestamp (default: datetime.now(UTC))",
+        "Sample weight computed as max(0.1, exp(-age_days / 30))",
+        "Ridge regression loss scaled by sample weights (weighted least squares)",
+        "Override predictor BCE loss scaled by sample weights",
+        "Minimum weight floor of 0.1 to prevent old samples from being completely ignored",
+        "At least 5 tests: all-recent weights ~1.0, old samples down-weighted, weight floor respected, training converges, timestamp handling"
+      ],
+      "passes": true,
+      "notes": "7 tests: recent_near_one, old_downweighted, weight_floor, empty_timestamp, training_converges, timestamp_persisted, override_predictor_weight"
+    },
+    {
+      "id": "US-295",
+      "title": "Companion /insights command showing patterns, biases, and graph health",
+      "description": "Add /insights command to AuraCompanion that shows the user their top detected patterns, active biases, and graph health stats. Provides transparency into what Aura has learned.",
+      "acceptance": [
+        "/insights shows: top 3 active patterns (from T1/T2) with strength and age",
+        "Current bias scores if any detected, with plain-language descriptions",
+        "Graph health: total nodes, dormant count, recently pruned count, model version (v1/v2)",
+        "If no patterns/biases detected: 'No significant patterns detected yet — keep talking to Aura'",
+        "Output is structured and readable in terminal",
+        "At least 5 tests: no data, with patterns, with biases, graph stats, combined output"
+      ],
+      "passes": true,
+      "notes": "5 tests: no_data, with_bias_data, graph_stats, model_version, command_routing"
+    }
+  ]
+}

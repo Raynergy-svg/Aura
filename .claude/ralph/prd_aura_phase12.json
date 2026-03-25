@@ -1,0 +1,110 @@
+{
+  "phase": 12,
+  "title": "End-to-End Integration, Fatigue Intelligence & Observability",
+  "codename": "aura_phase12_integration_fatigue",
+  "created": "2026-03-24",
+  "status": "complete",
+  "rationale": "Phase 11 completed adaptive intelligence (Bayesian weights, EMA, tilt, corruption recovery, statistical validation, growth caps). Codebase gap analysis + web research identified 3 integration gaps and 3 intelligence gaps: (1) TiltDetector is implemented but never initialized or fed real context — readiness always sees tilt_score=0, (2) AdaptiveWeightManager and ReadinessModelV2 have no training loop — outcome signals never update weights so system always falls back to static V1, (3) Bridge health status is computed but never displayed — trader cannot diagnose Aura↔Buddy communication failures, (4) Decision interval variability as fatigue proxy — research shows HRV-style analysis on decision cadence detects cognitive fatigue before keyword signals, (5) Pattern tier cascade has no reload validation — T2 may silently operate on stale T1 data, (6) Readiness anomaly detection via EWMA residual analysis catches sudden degradation patterns invisible to point-wise scoring.",
+  "stories": [
+    {
+      "id": "US-308",
+      "title": "Wire TiltDetector end-to-end from Companion through ReadinessComputer",
+      "description": "TiltDetector (US-304) is fully implemented but never initialized in ReadinessComputer (uses hasattr check that always fails) and never receives real message/outcome context (uses getattr with empty list defaults). Wire the full pipeline: AuraCompanion maintains a rolling message buffer (last 20 messages), passes it to ReadinessComputer before compute(), ReadinessComputer initializes TiltDetector in __init__, and detect_tilt() receives actual data. Add set_context(messages, outcomes) method to ReadinessComputer.",
+      "acceptance": [
+        "ReadinessComputer.__init__() creates TiltDetector instance as self._tilt_detector",
+        "New set_context(messages, outcomes) method stores recent messages and outcomes for tilt detection",
+        "compute() passes stored messages and outcomes to detect_tilt() instead of empty getattr defaults",
+        "AuraCompanion.process_message() calls readiness.set_context() with _message_history before compute()",
+        "AuraCompanion maintains rolling buffer of last 20 messages (append + trim)",
+        "Integration test: 3+ revenge-keyword messages → tilt_score > 0 → readiness penalty applied in final signal",
+        "Integration test: calm messages → tilt_score == 0 → no penalty",
+        "At least 7 tests: init creates detector, set_context stores data, compute uses context, companion passes history, buffer trim at 20, end-to-end tilt penalty, end-to-end no tilt"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-309",
+      "title": "Outcome-driven training loop for AdaptiveWeightManager",
+      "description": "AdaptiveWeightManager (US-302) exists but no code path reads OutcomeSignal from the bridge and calls update(). Create a train_from_outcome() method on ReadinessComputer that: reads the latest outcome signal from bridge, looks up the corresponding readiness signal components, determines which components predicted correctly, calls adaptive_weights.update() for each component. Wire into AuraCompanion as a post-message check that runs when new outcome signals are detected.",
+      "acceptance": [
+        "New ReadinessComputer.train_from_outcome(outcome_signal, readiness_signal) method",
+        "Method determines per-component prediction correctness by comparing component score vs outcome (win if score > 0.5 and profit > 0, or score < 0.5 and profit <= 0)",
+        "Calls self._adaptive_weights.update(component_name, correct, days_old) for each of 6 components",
+        "AuraCompanion.process_message() checks bridge for new outcome signals after processing",
+        "If new outcome found and matching readiness signal exists, calls train_from_outcome()",
+        "Training only triggers once per outcome (tracks last_trained_outcome_timestamp)",
+        "At least 8 tests: correct prediction updates alpha, incorrect updates beta, days_old decay applied, training skips duplicate outcome, no readiness match returns gracefully, full loop from outcome to weight change, weights persist after training, V1 fallback until 10 outcomes"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-310",
+      "title": "Decision interval variability as cognitive fatigue proxy",
+      "description": "Research shows HRV-style analysis on inter-decision intervals detects cognitive fatigue. Track time between trade evaluations/override events. Compute RMSSD (root mean square successive differences) on the interval series. Low variability = monotonic fatigued decisions. High variability = erratic stressed decisions. Feed as a new fatigue_variability component into readiness. Uses only numpy (already available).",
+      "acceptance": [
+        "New DecisionCadenceAnalyzer class in readiness.py with analyze(timestamps) → CadenceMetrics",
+        "CadenceMetrics dataclass with rmssd, sdnn, mean_interval, variability_score (0-1 normalized)",
+        "variability_score: 1.0 = optimal range (moderate variability), 0.0 = extreme low or high",
+        "Optimal RMSSD range configurable (default: 30-120 seconds between decisions)",
+        "ReadinessComputer.compute() integrates variability_score as penalty: readiness *= (0.8 + 0.2 * variability_score)",
+        "ReadinessSignal extended with decision_variability field",
+        "Graceful degradation: fewer than 5 timestamps returns variability_score=1.0 (no penalty)",
+        "At least 8 tests: optimal intervals → score ~1.0, very regular intervals (fatigue) → score < 0.5, erratic intervals (stress) → score < 0.5, insufficient data returns 1.0, configurable range, integration with readiness score, RMSSD computation correctness, edge case single timestamp"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-311",
+      "title": "Bridge health CLI commands with auto-alert on stale signals",
+      "description": "BridgeHealthStatus (US-305) returns per-file health but is never displayed. Add /bridge-status command to AuraCompanion showing health of all 4 bridge files with colored status indicators and signal age. Add /bridge-repair command that attempts recovery from backups for corrupted files. During process_message(), auto-warn if readiness signal is stale (>1 hour) or outcome signal is stale (>24 hours).",
+      "acceptance": [
+        "AuraCompanion handles /bridge-status command → calls bridge.bridge_health() → formatted output with color-coded status per file",
+        "Status display shows: file name, health (healthy/corrupted/missing/stale), age, last update timestamp",
+        "AuraCompanion handles /bridge-repair command → attempts recovery for any corrupted files → reports results",
+        "process_message() checks signal staleness after readiness computation: warns if readiness stale >1h or outcome stale >24h",
+        "Staleness warning shown at most once per session (flag prevents repeated warnings)",
+        "FeedbackBridge.repair_corrupted() method exposed (wraps existing _recover_from_backup logic) with return value",
+        "At least 8 tests: bridge-status displays healthy, bridge-status displays stale, bridge-status displays corrupted, bridge-repair recovers from backup, bridge-repair reports failure, staleness warning triggers, staleness warning suppressed after first show, repair return value"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-312",
+      "title": "Pattern tier cascade reload validation with graceful degradation",
+      "description": "PatternEngine._reload_tier_patterns() silently catches exceptions during inter-tier reload. If T1 output is corrupted, T2 operates on stale data with no indication. Add return value to reload methods indicating success/partial/failure. Log warnings on partial failures. Add cascade_health() method reporting the reload status of each tier. Ensure T2 proceeds with local data only (not stale global data) on reload failure.",
+      "acceptance": [
+        "TierReloadResult enum: SUCCESS, PARTIAL (some patterns loaded), FAILED (no patterns loaded)",
+        "_reload_tier_patterns() returns Dict[str, TierReloadResult] for each tier",
+        "run_all() logs WARNING if any tier reload returns PARTIAL or FAILED",
+        "On FAILED reload, tier proceeds with only its own locally-detected patterns (not stale previous-run data)",
+        "New cascade_health() method returns dict of tier → (reload_status, pattern_count, last_run_timestamp)",
+        "PatternEngine stores last cascade_health result for external inspection",
+        "At least 8 tests: successful cascade all tiers, T1 corrupt → T2 partial reload, full cascade failure handling, cascade_health reporting, T2 sees T1 patterns after successful reload, T2 uses local only on T1 failure, run_all logs warnings, reload result enum values"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-313",
+      "title": "Readiness trend anomaly detection via EWMA residual analysis",
+      "description": "Point-wise readiness scores miss trend anomalies (sudden drops that deviate from the trader's normal pattern). Add ReadinessAnomalyDetector that maintains an EWMA baseline of readiness scores and flags when residuals (raw - baseline) exceed 2.5 standard deviations. This detects sudden degradation invisible to single-score thresholds. Feed anomaly_detected flag into ReadinessSignal.",
+      "acceptance": [
+        "New ReadinessAnomalyDetector class with update(score) → AnomalyResult method",
+        "AnomalyResult dataclass: baseline (EWMA), residual (score - baseline), threshold, anomaly_detected (bool), severity (0-1)",
+        "EWMA baseline alpha=0.1 (90% inertia — learns slowly), configurable",
+        "Threshold: |residual| > 2.5 * rolling_std(residuals), where rolling_std uses EWMA of squared residuals",
+        "Severity = |residual| / threshold, clamped to [0, 1]",
+        "ReadinessComputer creates detector in __init__, calls update() after computing raw score",
+        "ReadinessSignal extended with anomaly_detected (bool) and anomaly_severity (float) fields",
+        "Minimum 10 scores before anomaly detection activates (insufficient history → anomaly_detected=False)",
+        "At least 8 tests: stable scores no anomaly, sudden drop triggers anomaly, gradual decline no anomaly, severity scaling, minimum history requirement, EWMA convergence, configurable alpha, anomaly fields in signal"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

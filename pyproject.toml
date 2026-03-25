@@ -1,0 +1,16 @@
+[project]
+name = "aura"
+version = "0.1.0"
+description = "Aura — Human Intelligence Engine for the Buddy+Aura trading system"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
+[project.scripts]
+aura = "src.aura.cli.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

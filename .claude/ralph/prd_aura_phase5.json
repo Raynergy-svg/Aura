@@ -1,0 +1,100 @@
+{
+  "phase": 5,
+  "title": "Prediction Model Test Coverage & Hardening",
+  "codename": "aura_phase5_prediction_tests",
+  "created": "2026-03-23",
+  "status": "complete",
+  "rationale": "readiness_v2.py (556 lines) and override_predictor.py (552 lines) have ZERO test coverage. These are ML models that directly influence trading gate decisions — highest-risk untested code in Aura.",
+  "stories": [
+    {
+      "id": "US-250",
+      "title": "ReadinessModelV2: Feature encoding and V1 fallback tests",
+      "description": "Test ReadinessTrainingSample.to_feature_vector() produces correct 10-dimensional vector with non-linear and interaction terms. Test V1 fallback path when model is untrained.",
+      "acceptance": [
+        "to_feature_vector() returns exactly 10 floats",
+        "Non-linear features (squared) are mathematically correct",
+        "Interaction features (emotional*cognitive, stress*override) are correct",
+        "compute_score() uses V1 weights when _trained is False",
+        "V1 contributions sum correctly",
+        "Default component values used for missing keys"
+      ],
+      "passes": true,
+      "notes": "6 tests in TestUS250FeatureEncoding — all pass"
+    },
+    {
+      "id": "US-251",
+      "title": "ReadinessModelV2: Training, early stopping, and R² computation",
+      "description": "Test that train() produces valid weights, early stopping fires on convergence/divergence, R² is computed correctly, and insufficient data returns error.",
+      "acceptance": [
+        "train() with < min_samples returns error dict",
+        "train() with sufficient samples sets _trained=True",
+        "R² is between 0 and 1 for well-behaved data",
+        "Early stopping (convergence) triggers before max_epochs on easy data",
+        "Training metrics include epochs_run, early_stop_reason, weights",
+        "Feature means/stds are computed correctly after training"
+      ],
+      "passes": true,
+      "notes": "7 tests in TestUS251Training — all pass. Also tests auto-train on buffer reaching min_samples."
+    },
+    {
+      "id": "US-252",
+      "title": "ReadinessModelV2: OOD detection and prediction bounds",
+      "description": "Test that _predict() detects out-of-distribution features (|z| > 3σ) and blends prediction towards 0.5. Test compute_score() output is always in [0, 100].",
+      "acceptance": [
+        "Normal features produce unblended prediction",
+        "OOD features (beyond 3σ) trigger blending towards 0.5",
+        "compute_score() output is clamped to [0, 100] for extreme inputs",
+        "OOD detection uses correct feature names in log"
+      ],
+      "passes": true,
+      "notes": "4 tests in TestUS252OODAndBounds — all pass. Tests both trained and untrained clamping."
+    },
+    {
+      "id": "US-253",
+      "title": "ReadinessModelV2: Save/load roundtrip and buffer persistence",
+      "description": "Test model save/load preserves weights, bias, means, stds, trained status. Test training buffer save/load roundtrip.",
+      "acceptance": [
+        "Saved model can be loaded with identical weights/bias",
+        "Feature means/stds survive roundtrip",
+        "Training buffer survives save/load roundtrip",
+        "Feature count mismatch on load is handled gracefully",
+        "Missing model file on load doesn't crash"
+      ],
+      "passes": true,
+      "notes": "7 tests in TestUS253Persistence — all pass. Also tests get_model_info() and get_weight_comparison()."
+    },
+    {
+      "id": "US-254",
+      "title": "OverridePredictor: Feature encoding, sigmoid, and enum warnings",
+      "description": "Test _encode_features() maps known/unknown enums correctly, _sigmoid() is numerically stable, and US-239 warnings fire for unknown enums.",
+      "acceptance": [
+        "_encode_features() produces exactly 8 floats",
+        "Known emotional states map to correct risk values",
+        "Known cognitive loads map to correct risk values",
+        "Unknown enums default to documented values (0.0 or 0.15)",
+        "US-239 warnings fire once per unknown value (dedup by set)",
+        "_sigmoid(0) = 0.5, _sigmoid(large_pos) ≈ 1.0, _sigmoid(large_neg) ≈ 0.0",
+        "_sigmoid handles both positive and negative overflow without math error"
+      ],
+      "passes": true,
+      "notes": "17 tests in TestUS254FeatureEncoding. BUG FOUND: US-239 emotional_state dedup checked raw value instead of prefixed key — fixed in override_predictor.py line 180."
+    },
+    {
+      "id": "US-255",
+      "title": "OverridePredictor: Training, prediction, risk levels, and OOD",
+      "description": "Test fit() trains on synthetic data, predict_loss_probability() returns valid OverridePrediction, risk level classification is correct, and OOD detection works.",
+      "acceptance": [
+        "fit() with < 5 events returns error dict",
+        "fit() with sufficient events sets _trained=True and returns metrics",
+        "predict_loss_probability() returns OverridePrediction with all fields",
+        "Risk levels map correctly: <0.5=low, 0.5-0.65=moderate, 0.65-0.8=high, ≥0.8=critical",
+        "Untrained model uses heuristic fallback prediction",
+        "OOD features (>3σ) blend prediction towards 0.5",
+        "predict_batch() returns list of predictions",
+        "Model save/load roundtrip preserves accuracy"
+      ],
+      "passes": true,
+      "notes": "15 tests in TestUS255TrainingAndPrediction — all pass. Includes early stopping verification and feature count mismatch handling."
+    }
+  ]
+}

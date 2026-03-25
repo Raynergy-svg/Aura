@@ -1,0 +1,109 @@
+{
+  "phase": 13,
+  "title": "Signal Intelligence Wiring & VADER Sentiment Upgrade",
+  "codename": "aura_phase13_signal_wiring",
+  "created": "2026-03-24",
+  "status": "complete",
+  "rationale": "Phase 12 completed integration of TiltDetector, training loop, decision cadence, bridge health, cascade validation, and anomaly detection. Codebase gap analysis + web research reveals 5 critical integration gaps where existing features are computed but never influence readiness, plus one NLP upgrade opportunity. (1) BiasDetector scores extracted by ConversationProcessor but never applied as readiness penalty \u2014 cognitive biases are phantom. (2) ConversationProcessor.estimate_cognitive_load() exists (US-284) but ReadinessComputer uses stressor-count heuristic instead \u2014 real cognitive load analysis is dead code. (3) Decision cadence variability_score is computed (US-310) and stored in signal but the readiness penalty formula (0.8 + 0.2 * score) was already applied \u2014 however OverridePredictor predictions are never consumed by any downstream code. (4) Keyword-based sentiment extraction is Phase 1 heuristic \u2014 VADER compound scoring provides negation/emphasis/contrast-aware polarity with zero model loading. (5) ReadinessSignal has no bias_scores field \u2014 biases detected but lost before reaching Buddy. (6) No /predict CLI command exists despite OverridePredictor being fully trained.",
+  "stories": [
+    {
+      "id": "US-314",
+      "title": "Wire BiasDetector scores as readiness penalty component",
+      "description": "ConversationProcessor.process_message() populates ConversationSignals.bias_scores via BiasDetector (US-293), but ReadinessComputer.compute() never reads these scores. Wire bias_scores through compute() as a post-component penalty: each detected bias above threshold (score > 0.5) reduces readiness by 3 points, capped at 15 points total penalty. Add bias_scores dict to ReadinessSignal for Buddy visibility.",
+      "acceptance": [
+        "ReadinessComputer.compute() accepts optional bias_scores: Dict[str, float] parameter",
+        "Each bias with score > 0.5 applies a 3-point readiness penalty (max 5 biases = 15 points)",
+        "Bias penalty applied after V1/V2 scoring but before EMA smoothing",
+        "ReadinessSignal extended with bias_scores: Dict[str, float] field (default empty dict)",
+        "ReadinessSignal.to_dict() includes bias_scores in output",
+        "When no bias_scores provided, zero penalty applied (backward compatible)",
+        "At least 8 tests: no biases no penalty, single bias above threshold, single bias below threshold, multiple biases capped at 15, bias_scores in signal dict, backward compat with no param, all 4 bias types, bias + tilt combined penalty"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-315",
+      "title": "VADER compound sentiment scoring to augment keyword extraction",
+      "description": "Replace the keyword-only sentiment calculation in ConversationProcessor with VADER compound scoring. VADER handles negation ('not good' \u2192 negative), emphasis ('GREAT!!!' \u2192 strong positive), and contrast ('good but worried' \u2192 mixed) automatically. Keep existing keyword extraction for stressor/topic detection but use VADER compound score as the primary sentiment signal. This is the Phase 1\u2192Phase 1.5 NLP upgrade mentioned in the module docstring.",
+      "acceptance": [
+        "ConversationProcessor.__init__() creates VADER SentimentIntensityAnalyzer instance",
+        "New _compute_vader_sentiment(message: str) \u2192 float method returning -1 to +1 compound score",
+        "process_message() uses VADER compound to compute sentiment_score: (compound + 1) / 2 \u2192 0-1 normalized",
+        "Existing keyword extraction preserved for stressor/topic detection (not replaced)",
+        "VADER score blended with keyword sentiment: 0.6 * vader + 0.4 * keyword (keyword as safety net)",
+        "Graceful fallback: if nltk/vader unavailable, log warning and use keyword-only (current behavior)",
+        "At least 8 tests: positive message high sentiment, negative message low, negation handled, emphasis handled, contrast/mixed signals, fallback when vader unavailable, blend ratio correct, neutral message ~0.5"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-316",
+      "title": "Wire cognitive load estimation into readiness computation",
+      "description": "ConversationProcessor.estimate_cognitive_load() (US-284) returns 0.0-1.0 from message structural complexity (sentences, questions, conditionals, topic shifts). Currently ReadinessComputer uses a stressor-count heuristic for cognitive_load_score. Wire the real estimate through: pass current message to estimate_cognitive_load(), blend with stressor-count score (0.5 * text_load + 0.5 * stressor_load), update cognitive_load_score in components. This activates the dead US-284 code.",
+      "acceptance": [
+        "ReadinessComputer.compute() accepts optional message_text: str parameter for cognitive load estimation",
+        "When message_text provided, calls ConversationProcessor.estimate_cognitive_load(message_text)",
+        "Blends text-based load (inverted: 1.0 - text_load) with stressor-count score: 0.5 * each",
+        "cognitive_load_score in ReadinessComponents reflects blended value",
+        "When message_text is None or empty, falls back to stressor-count-only (backward compatible)",
+        "ConversationProcessor instance created lazily in ReadinessComputer (import + instantiate on first use)",
+        "At least 7 tests: simple message high score, complex message lower score, no message fallback, blend ratio, stressor+complex worst case, stressor+simple medium case, empty string fallback"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-317",
+      "title": "Wire OverridePredictor into ReadinessSignal + /predict command",
+      "description": "OverridePredictor (US-254/255) is fully implemented with training, sigmoid prediction, and OOD detection, but predictions are never consumed. Wire it into ReadinessSignal as override_loss_risk (0-1 probability that next override will lose). Add /predict CLI command to AuraCompanion that shows current override risk assessment. When override_loss_risk > 0.7, ReadinessComputer applies a 10-point penalty.",
+      "acceptance": [
+        "ReadinessSignal extended with override_loss_risk: float = 0.0 field",
+        "ReadinessSignal.to_dict() includes override_loss_risk",
+        "ReadinessComputer.compute() accepts optional override_predictor parameter",
+        "When predictor available and trained, calls predict() with current context to get loss probability",
+        "override_loss_risk > 0.7 triggers 10-point readiness penalty (applied after bias penalty, before EMA)",
+        "AuraCompanion handles /predict command: shows current override loss risk, risk level label, and recommendation",
+        "Graceful fallback: untrained predictor returns 0.0 risk (no penalty)",
+        "At least 8 tests: no predictor no penalty, untrained predictor no penalty, low risk no penalty, high risk penalty, signal field present, predict command output, OOD returns conservative estimate, combined with bias penalty"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-318",
+      "title": "Readiness trend decomposition via STL with alert generation",
+      "description": "Current anomaly detection (US-313 EWMA) catches sudden drops but misses gradual trend decline vs seasonal patterns. Add ReadinessTrendAnalyzer using statsmodels STL decomposition. Decomposes readiness history into trend + seasonal + residual. Generates alerts: TREND_DECLINE (slope < -0.5 with anomalies), SEASONAL_PATTERN (informational), ANOMALY_SPIKE (residual > 2\u03c3). Feed trend_direction into ReadinessSignal. Requires minimum 14 samples. Graceful degradation if statsmodels unavailable.",
+      "acceptance": [
+        "New ReadinessTrendAnalyzer class with add_sample(score, timestamp) and decompose() methods",
+        "decompose() returns dict with trend_direction ('improving'/'stable'/'declining'), trend_slope, anomaly_count, seasonal_amplitude",
+        "readiness_alert() returns list of typed alerts with severity (HIGH/MEDIUM/INFO)",
+        "Minimum 14 samples before decomposition activates (returns 'insufficient_data' otherwise)",
+        "ReadinessSignal extended with trend_direction: str = 'stable' field",
+        "ReadinessComputer creates analyzer in __init__, feeds samples in compute(), sets trend_direction on signal",
+        "Graceful fallback: if statsmodels unavailable, log warning and return 'stable' (no crash)",
+        "At least 8 tests: insufficient data returns stable, declining trend detected, stable trend detected, improving trend detected, anomaly spike alert, seasonal pattern info, graceful no-statsmodels fallback, signal field populated"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-319",
+      "title": "Phase 13 integration tests + cross-component validation",
+      "description": "Phase 12 gap analysis revealed no integration tests crossing ConversationProcessor \u2192 ReadinessComputer \u2192 Bridge Signal boundaries. Write integration tests that verify: (1) bias scores flow from process_message to readiness penalty, (2) VADER sentiment changes readiness, (3) cognitive load from text analysis affects score, (4) override predictor risk gates readiness, (5) trend analyzer produces alerts after 14+ samples. Each test exercises the full pipeline, not mocked components.",
+      "acceptance": [
+        "At least 3 integration tests that create real ConversationProcessor + ReadinessComputer instances (no mocks on production code)",
+        "Test 1: High-bias messages \u2192 process_message \u2192 extract bias_scores \u2192 compute() with bias_scores \u2192 readiness penalized",
+        "Test 2: Negative VADER sentiment \u2192 lower emotional_state_score \u2192 lower readiness",
+        "Test 3: Complex message \u2192 high cognitive load \u2192 lower cognitive_load_score \u2192 lower readiness",
+        "Test 4: OverridePredictor with high loss risk \u2192 readiness penalty applied \u2192 signal has override_loss_risk",
+        "Test 5: 15+ readiness samples \u2192 trend analyzer detects direction \u2192 signal has trend_direction",
+        "All integration tests use NEUTRAL_CIRCADIAN to isolate signal effects from time-of-day",
+        "At least 7 tests total across integration scenarios"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

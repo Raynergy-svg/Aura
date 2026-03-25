@@ -1,0 +1,108 @@
+{
+  "phase": 11,
+  "title": "Adaptive Intelligence, Score Stability & System Hardening",
+  "codename": "aura_phase11_adaptive_hardening",
+  "created": "2026-03-23",
+  "status": "complete",
+  "rationale": "Phase 10 completed temporal depth (lagged correlations, evidence decay, multi-hop BFS, circadian multiplier, feature expansion). Web research + codebase gap analysis identified 3 intelligence gaps and 3 reliability gaps: (1) ReadinessComputer uses fixed component weights — Bayesian adaptive weighting learns which components predict YOUR outcomes, (2) readiness score thrashes day-to-day causing Buddy to flip positions — EMA smoothing with hysteresis prevents over-reaction, (3) no tilt/revenge trading detection — post-loss emotional spirals are predictable and gateable, (4) bridge signal corruption has no recovery path — silent stale data degrades decisions, (5) T2/T3 patterns lack statistical validation — false correlations become spurious rules, (6) SelfModelGraph has no hard growth cap — unbounded node accumulation degrades query performance over months.",
+  "stories": [
+    {
+      "id": "US-302",
+      "title": "Bayesian adaptive component weights for ReadinessComputer",
+      "description": "Replace fixed readiness component weights with Beta-Binomial conjugate priors that learn from trade outcomes. After each OutcomeSignal, update alpha (success) or beta (failure) for each component based on whether its signal predicted the outcome correctly. Apply exponential decay (half-life: 30 trades) so recent outcomes matter more. Fall back to static V1 weights until 10+ outcomes are recorded.",
+      "acceptance": [
+        "New AdaptiveWeightManager class with per-component alpha/beta tracking",
+        "update(component_name, prediction_correct, days_old) increments alpha or beta with exponential decay",
+        "get_weights() returns dict of component → weight (alpha / (alpha + beta)), normalized to sum=1.0",
+        "ReadinessComputer uses adaptive weights when sample_count >= 10, else static V1 weights",
+        "Weights persisted to .aura/adaptive_weights.json with atomic write",
+        "Backwards-compatible: missing file → fresh priors (alpha=1, beta=1 for all)",
+        "At least 8 tests: initial priors, single update, decay weighting, normalization, persistence roundtrip, V1 fallback threshold, convergence after 50 trades, weight drift detection"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-303",
+      "title": "Readiness score EMA smoothing with hysteresis threshold",
+      "description": "Apply exponential moving average (EMA) to final readiness score to prevent day-to-day thrashing. smoothed_score = alpha * raw_score + (1 - alpha) * previous_smoothed. Default alpha=0.3 (70% inertia). Only propagate score change to bridge if |delta| > 5 points (hysteresis). Track raw vs smoothed in ReadinessSignal for transparency.",
+      "acceptance": [
+        "ReadinessComputer.compute() applies EMA after all components + circadian multiplier",
+        "EMA alpha configurable (default 0.3), hysteresis threshold configurable (default 5.0)",
+        "ReadinessSignal extended with raw_score and smoothed_score fields",
+        "Bridge signal only updates when |new_smoothed - last_smoothed| > hysteresis_threshold",
+        "First computation (no history) uses raw score directly (no smoothing)",
+        "History stored in memory (not persisted) — resets on companion restart",
+        "At least 7 tests: first-call passthrough, EMA convergence, hysteresis blocks small changes, hysteresis passes large changes, alpha=1.0 means no smoothing, raw vs smoothed in signal, configurable threshold"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-304",
+      "title": "Tilt and revenge trading detection from conversation patterns",
+      "description": "Detect post-loss emotional spirals (tilt) by analyzing conversation sentiment trajectory + override frequency after losing trades. Tilt indicators: sentiment shift from calm→frustrated across 3+ consecutive messages, revenge keywords ('make it back', 'just one more', 'recover', 'double down'), override frequency spike within 30 minutes of loss. Tilt score (0-1) feeds as penalty into readiness.",
+      "acceptance": [
+        "New TiltDetector class in conversation_processor.py with detect_tilt(messages, recent_overrides, recent_outcomes) method",
+        "Sentiment trajectory analysis: flag if 3+ consecutive messages show declining sentiment score",
+        "Revenge keyword detection: configurable keyword set with weighted matching",
+        "Override frequency spike: compare last-30-min override count vs rolling 2-hour baseline",
+        "Tilt score = weighted combination of 3 indicators, clamped to [0, 1]",
+        "ReadinessComputer applies tilt penalty: readiness *= (1.0 - 0.4 * tilt_score)",
+        "ReadinessSignal includes tilt_score field for transparency",
+        "At least 9 tests: no tilt (calm conversation), sentiment decline detection, revenge keywords, override spike, combined tilt, tilt penalty on readiness, tilt score bounds, insufficient data returns 0, keyword configurability"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-305",
+      "title": "Bridge signal corruption detection and recovery",
+      "description": "Add corruption detection to FeedbackBridge: distinguish NotFound vs CorruptedJSON vs PermissionError on read failures. Implement rolling backup (last 3 valid states) for readiness_signal.json and outcome_signal.json. On corruption detection, auto-recover from most recent valid backup. Add bridge_health() method reporting status of each signal file.",
+      "acceptance": [
+        "FeedbackBridge._locked_read() returns typed error (NotFound, Corrupted, PermissionDenied) instead of bare None",
+        "New BridgeHealthStatus dataclass with per-file status (healthy, corrupted, missing, stale)",
+        "Rolling backup: after each successful write, copy previous valid state to .bak (keep last 3)",
+        "Auto-recovery: on Corrupted read, attempt restore from most recent .bak file, log WARNING",
+        "bridge_health() method checks all 4 bridge files, returns BridgeHealthStatus",
+        "Stale detection: flag if readiness_signal.json hasn't been updated in > 1 hour",
+        "At least 8 tests: healthy read, corrupted JSON recovery, missing file handling, permission error, backup rotation (4th backup removes oldest), stale detection, bridge_health reporting, recovery logging"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-306",
+      "title": "Statistical validation for T2/T3 pattern promotion",
+      "description": "Add p-value and effect size validation before T2/T3 patterns can be promoted to bridge rules. Require p < 0.05 and |effect_size| > 0.3 (medium effect) for any pattern to become a rule. Add p_value and effect_size fields to DetectedPattern. Reject low-evidence patterns that would create spurious rules.",
+      "acceptance": [
+        "DetectedPattern extended with p_value (Optional[float]) and effect_size (Optional[float]) fields",
+        "T2 detect() computes p-value using scipy.stats (or manual t-test for independence) for each correlation",
+        "T3 detect() computes effect size (Cohen's d) for narrative arc strength",
+        "BridgeRulesEngine.create_rule_from_pattern() rejects patterns with p_value > 0.05 or |effect_size| < 0.3",
+        "Minimum sample size N >= 15 enforced before p-value is computed (else p_value = None, not promotable)",
+        "Patterns with insufficient evidence marked as PRELIMINARY status (new status), not CONFIRMED",
+        "At least 8 tests: significant pattern passes, non-significant rejected, effect size too small rejected, minimum N enforcement, PRELIMINARY status assignment, None p_value handling, T2 p-value computation, T3 effect size computation"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-307",
+      "title": "SelfModelGraph node growth caps with intelligent pruning",
+      "description": "Add configurable max_nodes cap (default 5000) to SelfModelGraph. When node count exceeds soft cap (80%), run intelligent pruning: remove lowest-confidence nodes by type priority (Emotion < Observation < Decision < Goal < Person). Never prune Person or Value nodes. Track pruning events in graph stats.",
+      "acceptance": [
+        "SelfModelGraph constructor accepts max_nodes parameter (default 5000)",
+        "Soft cap at 80% (4000) triggers lazy pruning on next add_node() call",
+        "Pruning priority: Emotion nodes first, then Observation, then Decision — never Goal/Person/Value",
+        "Pruning selects lowest effective_strength nodes within each priority tier",
+        "Batch prune removes 10% of soft cap (400 nodes) per trigger to avoid frequent re-triggers",
+        "get_stats() includes pruning_events_total and last_prune_timestamp",
+        "Pruning cascades edges (existing delete_node behavior)",
+        "At least 8 tests: below cap no pruning, soft cap triggers prune, correct type priority, Person/Value immune, batch size correct, edge cascade on prune, stats tracking, configurable max_nodes"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

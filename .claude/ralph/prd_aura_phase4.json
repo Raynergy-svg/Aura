@@ -1,0 +1,101 @@
+{
+  "project": "Aura_Human_Intelligence_Engine",
+  "branchName": "ralph/aura-prediction-bridge-hardening-phase4",
+  "description": "Aura Phase 4 \u2014 Prediction Safety, Bridge Robustness, CLI Resilience. Phase 3 hardened the graph layer and expanded tests to 103. Phase 4 targets 6 verified bugs/hardening issues: (1) readiness_v2 training has no early stopping \u2014 can overfit or waste 500 epochs, (2) companion.py process_input has no exception handling \u2014 one crash kills the session, (3) companion.py onboarding save failure is silent \u2014 user thinks setup succeeded when data was lost, (4) override_predictor unknown enum values silently default \u2014 masks data quality issues, (5) validator orphan remediation commits outside loop \u2014 partial failure loses earlier updates, (6) signals.py JSONL parsing silently skips malformed lines without counting or logging. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-236",
+      "title": "Add early stopping to readiness_v2 training loop",
+      "description": "ReadinessPredictor.train() runs exactly 500 epochs with no early stopping. If loss plateaus at epoch 50, the remaining 450 are wasted. If loss diverges, training continues anyway. Add early stopping with configurable patience and loss delta threshold.",
+      "acceptanceCriteria": [
+        "Training stops early if loss change < 1e-5 for 10 consecutive epochs",
+        "Training stops if loss increases for 5 consecutive epochs (divergence guard)",
+        "Early stop reason is logged (convergence vs divergence)",
+        "Total epochs run is returned in training metrics",
+        "Default max_epochs=500 and patience=10 are configurable",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Early stopping with convergence (delta<1e-5 for 10 epochs) and divergence guard (5 epochs). epochs_run and early_stop_reason in metrics. Syntax validated."
+    },
+    {
+      "id": "US-237",
+      "title": "Add exception handling to companion process_input pipeline",
+      "description": "Companion.process_input() calls process_message \u2192 _log_to_graph \u2192 _update_readiness \u2192 _run_pattern_detection \u2192 _generate_response in sequence with zero exception handling. One crash in any step kills the interactive session. Wrap each stage in try-catch with fallback behavior and logged errors.",
+      "acceptanceCriteria": [
+        "Each stage (process_message, _log_to_graph, _update_readiness, _run_pattern_detection, _generate_response) is wrapped in try-except",
+        "If process_message fails, a neutral signals object is used as fallback",
+        "If _update_readiness fails, last known readiness score is reused",
+        "If _generate_response fails, a safe fallback response is returned",
+        "All exceptions are logged with the stage name and exception message",
+        "The session never crashes from a single stage failure",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "6-stage try-except in process_input: process_message, stressor update, _log_to_graph, _update_readiness, _run_pattern_detection, _generate_response. Each logs error and uses fallback. Session never crashes."
+    },
+    {
+      "id": "US-238",
+      "title": "Surface onboarding save failure to user in companion CLI",
+      "description": "Companion._run_onboarding() catches onboarding_profile.json write errors and logs a warning, but the user sees 'Onboarding complete!' regardless. If the profile fails to save, onboarding data is lost and Buddy never sees it. The user must be notified and offered a retry.",
+      "acceptanceCriteria": [
+        "On write failure, print a visible warning to the user (not just logger)",
+        "The warning includes what failed and suggests running /onboarding again",
+        "Onboarding still completes (graph nodes are in-memory) but warning is clear",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "On write failure, print YELLOW warning to user with suggestion to retry /onboarding. Graph nodes preserved in memory."
+    },
+    {
+      "id": "US-239",
+      "title": "Log warnings for unknown enum values in override_predictor",
+      "description": "OverridePredictor._encode_features() silently defaults to 0.0/0.15 when emotional_state, cognitive_load, override_type, or regime contain unknown values. This masks data quality issues \u2014 if Buddy adds a new regime type and Aura doesn't know about it, the prediction silently degrades.",
+      "acceptanceCriteria": [
+        "Log WARNING when emotional_state not in EMOTIONAL_STATE_RISK map",
+        "Log WARNING when cognitive_load not in COGNITIVE_LOAD_RISK map",
+        "Log WARNING when override_type not in OVERRIDE_TYPE_RISK map",
+        "Log WARNING when regime not in REGIME_RISK map",
+        "Each warning includes the unknown value and the default being used",
+        "Use a set to track already-warned values to avoid log spam",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added _warned_enums set to __init__. Logs WARNING on unknown emotional_state, cognitive_load, override_type, regime. Includes unknown value and default used. Deduped by set."
+    },
+    {
+      "id": "US-240",
+      "title": "Fix validator orphan remediation commit safety",
+      "description": "SelfModelValidator._check_orphan_nodes() auto-remediation commits AFTER the entire loop. If node 3 of 10 raises sqlite3.Error, nodes 1-2 updates are lost because the commit at line 402 only runs if no exception propagates. Move commit inside the loop or batch with explicit error counting.",
+      "acceptanceCriteria": [
+        "Each orphan node confidence decay is committed individually or in safe batches",
+        "Failed node updates are logged with the node ID",
+        "The fixes counter only increments for actually committed updates",
+        "A summary log line reports: N succeeded, M failed out of K orphans",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Moved conn.commit() inside per-node try block. Failed count tracked separately. Summary log: N succeeded, M failed out of K orphans."
+    },
+    {
+      "id": "US-241",
+      "title": "Add malformed line counting and logging to bridge JSONL parser",
+      "description": "FeedbackBridge.get_recent_overrides() (signals.py) silently skips malformed JSON lines in override_events.jsonl. After many appends, corruption accumulates silently. Add counting and threshold-based warnings.",
+      "acceptanceCriteria": [
+        "Track count of skipped malformed lines during JSONL parsing",
+        "Log WARNING with count if any lines were skipped",
+        "Log ERROR if >20% of lines are malformed (suggests file corruption)",
+        "Include line number of first malformed line in log message",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Tracks total_lines, skipped_lines, first_bad_line. WARNING if any skipped. ERROR if >20% malformed. Includes first bad line number."
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "phase": 10,
+  "title": "Temporal Depth, Bridge Enrichment & Graph Path Analysis",
+  "codename": "aura_phase10_temporal_depth",
+  "created": "2026-03-23",
+  "status": "complete",
+  "rationale": "Phase 9 added adaptive readiness (V2 wiring), temporal decay on nodes, graph pruning, bias detection, recency-weighted ML, and /insights. Web research + codebase gap analysis identified 3 critical temporal gaps: (1) T2 correlates readiness→outcomes on same-day data only — real psychology has 1-7 day lags (career stress today → bad trading 2 days later), (2) Bridge OutcomeSignal has zero human context — emotional state at trade time is lost, preventing per-trade emotional correlation, (3) T1 pattern evidence doesn't decay — resolved 3-week stress arcs still flag as 'chronic stress'. Additionally: graph queries are 1-hop only (missing causal chains), ReadinessModelV2 lacks interaction terms (non-linear compounding), and no circadian modulation of readiness. Phase 10 addresses temporal depth across all layers.",
+  "stories": [
+    {
+      "id": "US-296",
+      "title": "Time-lag correlation analysis in Tier 2 (0-7 day offsets)",
+      "description": "Extend Tier2CrossDomainDetector to compute correlations at multiple time lags (0-7 days). For each domain pair, test lags 0-7 and report the lag with strongest correlation. This discovers delayed effects: 'Win rate drops 35% two days after career stress mentions.'",
+      "acceptance": [
+        "New method _compute_lagged_correlations(series_a, series_b, max_lag=7) returns list of (lag, correlation, p_value) tuples",
+        "T2 detect() uses lagged correlations instead of same-day-only",
+        "DetectedPattern evidence includes 'optimal_lag_days' field when lag > 0",
+        "Only lags with |correlation| > MIN_CORRELATION (0.3) and p < 0.10 are reported",
+        "If lag=0 has strongest correlation, behavior unchanged from current",
+        "At least 6 tests: no-lag match, 2-day lag detected, 7-day max, insufficient data, p-value filtering, evidence field"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-297",
+      "title": "Bridge signal enrichment — emotional context on outcome signals",
+      "description": "Enrich OutcomeSignal with human context captured at trade time: emotional_state, readiness_score, cognitive_load, active_biases. Aura populates these when processing override events. T2 can then correlate per-trade emotional state with PnL directly.",
+      "acceptance": [
+        "OutcomeSignal dataclass extended with optional fields: emotional_state, readiness_at_trade, cognitive_load, active_biases",
+        "FeedbackBridge.write_outcome_signal() preserves new fields through serialization roundtrip",
+        "FeedbackBridge.read_outcome_signal() deserializes enriched fields (backwards-compatible with old format)",
+        "AuraCompanion captures current emotional state + readiness when override events are logged",
+        "At least 5 tests: enriched write/read roundtrip, backwards compat with old format, missing fields default to None, T2 can access enriched fields, serialization"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-298",
+      "title": "Temporal decay on Tier 1 pattern evidence",
+      "description": "Apply exponential decay (matching node decay lambda=0.05, ~14-day half-life) to T1 pattern evidence items. Pattern confidence is recomputed using decay-weighted evidence count. Patterns whose decay-weighted confidence drops below 0.1 are auto-archived.",
+      "acceptance": [
+        "Each evidence item in DetectedPattern has a timestamp (existing or added)",
+        "New method get_decay_weighted_confidence(pattern, now) applies exp(-0.05 * days_old) to each evidence item",
+        "T1 detect() uses decay-weighted counts for frequency thresholds",
+        "Patterns with decay_weighted_confidence < 0.1 are marked ARCHIVED status",
+        "Fresh evidence (< 3 days) has near-full weight (> 0.85)",
+        "At least 6 tests: fresh evidence full weight, 14-day half-life, 30-day decay, auto-archive, reactivation on new evidence, threshold boundary"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-299",
+      "title": "Multi-hop graph path analysis (BFS to depth 3)",
+      "description": "Add path-finding to SelfModelGraph: BFS traversal up to depth 3 to discover causal chains. 'Career_Decision → blocks → Focus → triggers → Override_Spike → causes → Losses.' Exposed via /graph command in companion.",
+      "acceptance": [
+        "get_path_between(source_id, target_id, max_depth=3) returns shortest path as list of (node_id, edge_type) tuples, or None",
+        "get_common_influences(node_id1, node_id2) returns nodes connected to both (shared causes)",
+        "BFS respects temporal decay — only traverses edges where effective_strength > 0.1",
+        "/graph command added to companion: '/graph path <source> <target>' shows causal chain",
+        "Returns None/empty gracefully when no path exists or nodes don't exist",
+        "At least 6 tests: direct path (1-hop), 2-hop path, 3-hop path, no path exists, common influences, decay-filtered traversal"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-300",
+      "title": "ReadinessModelV2 feature expansion with interaction terms",
+      "description": "Expand ReadinessModelV2 feature vector from 10 to 15 dimensions by adding 5 interaction/polynomial terms that capture non-linear compounding effects: stress×cognitive_load, override_discipline×engagement, confidence_trend×emotional_balance, engagement², and emotional_balance³.",
+      "acceptance": [
+        "to_feature_vector() produces 15 features (10 existing + 5 new interaction terms)",
+        "New interaction terms: stress×cognitive_load, override_discipline×engagement, confidence_trend×emotional_balance, engagement², emotional_balance³",
+        "Existing trained models gracefully handle feature dimension change (retrain required, logged as warning)",
+        "Cold-start V1 fallback unaffected (uses static weights, not V2 features)",
+        "Feature names list updated for /insights interpretability",
+        "At least 5 tests: feature vector length=15, interaction term values correct, V1 fallback unaffected, retrain-after-expansion, feature names"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-301",
+      "title": "Circadian readiness multiplier based on time-of-day",
+      "description": "Add circadian rhythm modulation to ReadinessComputer. Research shows 25% worse financial decision quality at 11pm vs 10am. Apply a configurable time-of-day multiplier curve to the final readiness score, with user-customizable peak/trough hours.",
+      "acceptance": [
+        "New method circadian_multiplier(hour: int) returns 0.5-1.0 multiplier based on configurable curve",
+        "Default curve: 6am=0.6, 9am=1.0, 13pm=0.85, 15pm=0.95, 20pm=0.75, 23pm=0.5",
+        "ReadinessComputer.compute() applies circadian multiplier to final score (after all components)",
+        "Multiplier configurable via .aura/config.json circadian section (peak_hours, trough_hours)",
+        "ReadinessSignal includes circadian_multiplier field for transparency",
+        "At least 5 tests: morning peak, evening trough, midnight low, custom config override, signal field present"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

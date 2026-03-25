@@ -1,0 +1,123 @@
+{
+  "phase": 15,
+  "title": "Recovery Intelligence, Expanded Biases & Metacognitive Monitoring",
+  "codename": "aura_phase15_recovery_metacognition",
+  "created": "2026-03-24",
+  "status": "complete",
+  "rationale": "Phase 14 activated the graph for readiness, added decision quality scoring, online learning, and anomaly cascade. Web research + codebase gap analysis reveals 3 critical gaps: (1) Aura detects current emotional state but never tracks RECOVERY — how quickly trader bounces back from stress/losses is a stronger predictor of override risk than current state alone (emotional regulation literature: Steenbarger, HRV-proxy research). (2) BiasDetector has 4 biases but misses 5 high-frequency biases found in trading psychology literature (sunk cost, anchoring, overconfidence, hindsight, attribution error). (3) No metacognitive monitoring — Aura can't measure whether the trader knows what they know (calibration: confidence vs accuracy alignment). Additionally: (4) Online learning uses fixed lr=0.01 which overshoots early and learns too slowly late — adaptive schedule with warmup improves convergence. (5) EWMA anomaly detection misses sudden structural breaks — Bayesian online changepoint detection catches regime shifts. Phase 15 focuses on recovery intelligence, expanded bias coverage, metacognitive scoring, and adaptive learning.",
+  "stories": [
+    {
+      "id": "US-326",
+      "title": "Emotional regulation & recovery scoring",
+      "description": "Aura detects current emotional state but never tracks recovery dynamics — how quickly readiness bounces back after losses or stress events. Implement EmotionalRegulationScorer with 3 metrics: (1) recovery_efficiency — measures how much of a readiness drop the trader recovers within a configurable window (default 60 min). (2) regulation_discipline — checks whether trader avoided overrides during high-stress periods (stress > 0.7). (3) stress_absorption — how many concurrent stressors the trader can maintain readiness above 50 with (measures resilience capacity). Blend into readiness as a new recovery_score component at 8% weight (reduce others proportionally). Cache recovery metrics in state snapshot for bridge enrichment.",
+      "acceptance": [
+        "New class EmotionalRegulationScorer in src/aura/scoring/emotional_regulation.py",
+        "recovery_efficiency(readiness_history, window_minutes=60) -> float (0-1): measures (peak_drop - current_deficit) / peak_drop",
+        "regulation_discipline(override_events, stress_levels) -> float (0-1): ratio of low-stress overrides to total overrides",
+        "stress_absorption(active_stressors_count, current_readiness) -> float (0-1): normalized capacity metric",
+        "composite_recovery_score = 0.4 * recovery_efficiency + 0.35 * regulation_discipline + 0.25 * stress_absorption",
+        "ReadinessComputer.compute() integrates recovery_score at 8% weight when history available",
+        "When insufficient history (< 5 readiness samples), recovery_score defaults to 0.5 (neutral)",
+        "Recovery metrics included in get_last_state_snapshot() for bridge enrichment",
+        "At least 8 tests: no history neutral, full recovery scores high, no recovery scores low, discipline with no overrides = 1.0, discipline with stress overrides penalizes, stress absorption scales with stressor count, composite weighting correct, integration with compute()"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-327",
+      "title": "Expanded cognitive bias detection: 5 new trading biases",
+      "description": "BiasDetector (US-293) detects 4 biases (disposition, loss_aversion, recency, confirmation) but misses 5 high-frequency trading biases identified in behavioral economics literature. Add: (1) sunk_cost — 'already invested too much', 'need to make it back', 'can't exit now after all this time'. (2) anchoring — fixation on entry price or round numbers: 'bought at X so need Y', 'waiting for 1.2000'. (3) overconfidence — inflated self-assessment after wins: 'I can't lose', 'this is easy', 'I know exactly what will happen'. (4) hindsight — retroactive inevitability: 'I knew it', 'should have seen it coming', 'it was obvious'. (5) attribution_error — external blame for losses, self-credit for wins: 'market is rigged', 'bad luck', vs 'I called it'. Each bias uses the same keyword extraction + threshold pattern as existing biases. Direct penalty remains 3pts/bias, cap at 25 (up from 15, since 9 biases max).",
+      "acceptance": [
+        "BiasDetector gains 5 new detection methods: _detect_sunk_cost, _detect_anchoring, _detect_overconfidence, _detect_hindsight, _detect_attribution_error",
+        "Each method follows existing pattern: keyword list + context window + threshold scoring",
+        "sunk_cost keywords: 'already invested', 'too much time', 'can't give up now', 'need to make it back', 'put too much into'",
+        "anchoring keywords: 'bought at', 'entry was', 'waiting for', specific price patterns (\\d+\\.\\d+), 'round number'",
+        "overconfidence keywords: 'can't lose', 'easy money', 'guaranteed', 'I know exactly', 'no way this fails', 'sure thing'",
+        "hindsight keywords: 'knew it', 'should have seen', 'was obvious', 'saw it coming', 'told you so'",
+        "attribution_error keywords: 'rigged', 'bad luck', 'unfair', 'manipulated' (external) vs 'I called it', 'my analysis' (self-credit)",
+        "Direct readiness penalty cap raised from 15 to 25 (3pts * 9 biases max = 27, capped at 25)",
+        "All 9 biases included in bias_scores dict on ReadinessSignal",
+        "At least 10 tests: each new bias detected correctly (5), each returns 0.0 on neutral text (5), penalty cap at 25 verified"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-328",
+      "title": "Metacognitive monitoring scorer: calibration & resolution",
+      "description": "Traders who know what they know make better decisions. Implement MetacognitiveMonitoringScorer that tracks: (1) calibration_score — alignment between trader's stated confidence and actual outcomes (perfect calibration: 80% confident trades win 80%). (2) resolution_score — ability to discriminate: high confidence on wins, low confidence on losses (Brier score decomposition). (3) effort_allocation — does trader invest more deliberation in uncertain trades? (inverse correlation between confidence and message complexity). Composite feeds into DecisionQualityScorer as an 8th dimension (metacognitive_monitoring, weight 0.10, reduce cognitive_reflection from 0.05 to 0.03 and information_adequacy from 0.20 to 0.17 to keep sum = 1.0).",
+      "acceptance": [
+        "New class MetacognitiveMonitoringScorer in src/aura/scoring/metacognitive.py",
+        "track_decision(decision_id, stated_confidence, outcome_pnl) stores decision record",
+        "calibration_score() -> float (0-1): |mean_confidence - win_rate| inverted and normalized",
+        "resolution_score() -> float (0-1): gap between avg confidence on wins vs losses, normalized",
+        "effort_allocation_score(confidence_levels, message_complexities) -> float (0-1): inverse correlation metric",
+        "composite() -> float (0-1): 0.4 * calibration + 0.35 * resolution + 0.25 * effort_allocation",
+        "Minimum 10 tracked decisions before scoring activates (returns 0.5 below threshold)",
+        "DecisionQualityScorer gains 8th dimension: metacognitive_monitoring (weight 0.10)",
+        "Updated weights: process_adherence=0.25, information_adequacy=0.17, metacognitive_awareness=0.15, uncertainty_acknowledgment=0.15, metacognitive_monitoring=0.10, rationale_clarity=0.10, emotional_regulation=0.05, cognitive_reflection=0.03",
+        "At least 9 tests: calibration perfect=1.0, calibration poor=low, resolution discriminates wins/losses, effort correlation inverse, composite weighting, insufficient data returns 0.5, decision quality 8-dimension weights sum to 1.0, integration with decision quality scorer, high metacognition boosts composite"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-329",
+      "title": "Adaptive learning rate for ReadinessModelV2 online SGD",
+      "description": "update_from_outcome() uses fixed lr=0.01 which overshoots early (first 50 samples) and learns too slowly after convergence (500+ samples). Implement adaptive schedule inspired by Polyak step-size: (1) warmup phase (first 50 samples): linear ramp from 0.001 to 0.01. (2) decay phase: lr = initial_lr / (1 + sample_count/warmup_size), with floor at 0.0001. (3) gradient diversity check: if recent gradients are aligned (cosine similarity > 0.7), use full lr (exploit); if diverse (< 0.3), reduce by 50% (explore). Track gradient history (last 10) for diversity computation. Add momentum (0.9 EMA of gradients) for smoother convergence.",
+      "acceptance": [
+        "New class AdaptiveLearningRateScheduler in src/aura/prediction/lr_scheduler.py",
+        "get_learning_rate(sample_count, gradient_vector) -> float: computes adaptive lr",
+        "Warmup: linear ramp 0.001 → initial_lr over first warmup_samples (default 50)",
+        "Decay: lr = initial_lr / (1 + sample_count / warmup_samples) after warmup",
+        "Floor: lr never drops below 0.0001",
+        "Gradient diversity: cosine similarity of current gradient vs mean of last 10 gradients",
+        "High alignment (> 0.7): full lr. Low alignment (< 0.3): lr * 0.5. Between: interpolated",
+        "Momentum buffer (beta=0.9): effective_gradient = 0.9 * momentum + 0.1 * current_gradient",
+        "ReadinessModelV2.update_from_outcome() uses AdaptiveLearningRateScheduler instead of fixed lr",
+        "Backward compatible: learning_rate parameter still accepted but used as initial_lr for scheduler",
+        "At least 8 tests: warmup ramp correct, decay after warmup, floor respected, aligned gradients use full lr, diverse gradients reduce lr, momentum smooths updates, scheduler integrates with update_from_outcome, convergence faster than fixed lr on synthetic data"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-330",
+      "title": "Bayesian online changepoint detection for readiness regime shifts",
+      "description": "EWMA anomaly detector (US-313) catches gradual drifts but misses sudden structural breaks — e.g., trader's baseline readiness jumped after a life event, or emotional regulation degraded after a major drawdown. Implement BayesianChangePointDetector using Adams & MacKay (2007) algorithm: maintains posterior distribution over run lengths, detects when P(changepoint) > threshold (0.10). On detection: create REGIME_SHIFT Life_Event node in graph with pre/post baselines. Wire into ReadinessComputer.compute() alongside existing anomaly detector. Add /regimes CLI command showing detected regime shifts with timestamps and baseline changes.",
+      "acceptance": [
+        "New class BayesianChangePointDetector in src/aura/prediction/changepoint.py",
+        "update(readiness_score) -> ChangePointResult with changepoint_prob, run_length, baseline_estimate",
+        "Uses Gaussian likelihood with rolling mean/std estimated from data",
+        "Hazard rate configurable (default 1/100 — expect 1 shift per 100 observations)",
+        "Changepoint threshold: 0.10 (10% posterior probability)",
+        "Minimum 20 observations before detection activates",
+        "ReadinessComputer.compute() calls changepoint detector after anomaly detector",
+        "On changepoint detected: create REGIME_SHIFT Life_Event node with severity=changepoint_prob, properties: pre_baseline, post_baseline, run_length",
+        "AuraCompanion handles /regimes command: shows last 5 regime shifts with timestamp, probability, baseline change",
+        "At least 8 tests: insufficient data returns no changepoint, stable series no detection, sudden jump detected, gradual drift not detected (that's EWMA's job), changepoint creates Life_Event node, probability above threshold, /regimes output format, detector reset after changepoint"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-331",
+      "title": "Phase 15 integration tests + /recovery CLI command",
+      "description": "Write integration tests verifying the full Phase 15 pipeline: (1) recovery scoring flows through readiness compute to bridge signal. (2) All 9 biases detected and penalized correctly in composite readiness. (3) Metacognitive monitoring feeds into decision quality composite. (4) Adaptive lr improves convergence over fixed lr. (5) Changepoint detection creates regime shift nodes. Plus add /recovery CLI command showing recovery metrics (efficiency, discipline, absorption) with visual indicators.",
+      "acceptance": [
+        "At least 3 integration tests using real instances (no mocks on production code)",
+        "Test 1: Populate readiness history with loss event → compute() with recovery scorer → verify recovery_score influences readiness",
+        "Test 2: Conversation with all 9 bias keywords → verify bias_scores has 9 entries → verify penalty capped at 25",
+        "Test 3: Track 15 decisions with confidence/outcome → metacognitive composite appears in decision quality score",
+        "Test 4: Run 100 online updates with adaptive lr → verify final weights closer to target than fixed lr=0.01",
+        "Test 5: Feed readiness series with sudden jump → verify changepoint detected → verify REGIME_SHIFT node in graph",
+        "AuraCompanion handles /recovery command: displays recovery_efficiency, regulation_discipline, stress_absorption with bars",
+        "All integration tests use NEUTRAL_CIRCADIAN to isolate from time-of-day effects",
+        "At least 8 tests total across integration + /recovery command scenarios"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

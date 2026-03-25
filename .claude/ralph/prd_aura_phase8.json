@@ -1,0 +1,101 @@
+{
+  "phase": 8,
+  "title": "Semantic Signal Intelligence & Adaptive Readiness",
+  "codename": "aura_phase8_semantic_adaptive",
+  "created": "2026-03-23",
+  "status": "complete",
+  "rationale": "Phase 7 hardened tests and externalized config. Research (web + codebase) identified 3 critical gaps: (1) ConversationProcessor uses keyword-only detection — misses negation, intensity, implicit stressors — causing 15-20% false positive rate, (2) ReadinessComputer uses static weights that never adapt to individual trader profiles or outcomes, (3) T2 pattern engine cannot detect time-lag or regime-conditional correlations. Phase 8 addresses the highest-impact improvements from both the affective computing research and the codebase gap analysis.",
+  "stories": [
+    {
+      "id": "US-280",
+      "title": "Negation-aware emotional signal extraction",
+      "description": "Add negation detection to ConversationProcessor so phrases like 'I am not stressed', 'no worries', 'can handle pressure' correctly invert or cancel keyword signals. Implement a negation window (3 tokens before keyword) using common negation words (not, no, never, don't, can't, won't, neither, nor, hardly, barely).",
+      "acceptance": [
+        "Negation words within 3-token window of a stress keyword cancel the keyword signal",
+        "Double negation ('not unable') correctly resolves to positive",
+        "Contractions handled (don't, can't, won't, isn't, wasn't)",
+        "'I am not stressed' → emotional_state != stressed",
+        "'No worries at all' → does not trigger anxiety signals",
+        "At least 8 tests covering negation patterns",
+        "Existing keyword detection still works for non-negated phrases"
+      ],
+      "passes": true,
+      "notes": "10 tests passing — negation window, contractions, double negation, keyword preservation"
+    },
+    {
+      "id": "US-281",
+      "title": "Emotional intensity scaling with modifier words",
+      "description": "Add intensity modifiers to ConversationProcessor that scale emotional signal strength. Words like 'extremely', 'very', 'slightly', 'somewhat', 'absolutely' should modify the intensity of detected emotions. Map emotional_state to a continuous intensity score (0.0-1.0) instead of just a label.",
+      "acceptance": [
+        "IntensityModifier enum or dict with at least 3 tiers: diminisher (0.5x), neutral (1.0x), amplifier (1.5x)",
+        "'slightly anxious' → lower stress_level than 'extremely anxious'",
+        "Intensity score (0.0-1.0) added to extracted signals alongside emotional_state label",
+        "ReadinessComputer stress_level component uses intensity score when available",
+        "At least 6 tests covering intensity modifiers",
+        "Backward compatible — missing intensity defaults to 1.0"
+      ],
+      "passes": true,
+      "notes": "7 tests passing — amplifier/diminisher tiers, intensity_score field, backward compat"
+    },
+    {
+      "id": "US-282",
+      "title": "Confidence trend acceleration (second derivative) detection",
+      "description": "Enhance ReadinessComputer confidence_trend component to detect rate-of-change (acceleration). A rapid confidence drop (-20 pts/week) is fundamentally different from a gradual decline (-2 pts/week). Add second-derivative computation to confidence_trend scoring with acceleration-based penalty/bonus.",
+      "acceptance": [
+        "Confidence acceleration computed from last 3+ readiness samples",
+        "Rapid decline (acceleration < -threshold) triggers additional readiness penalty",
+        "Rapid recovery (acceleration > +threshold) triggers readiness boost",
+        "Acceleration threshold configurable via config.json",
+        "ReadinessSignal includes confidence_acceleration field",
+        "At least 5 tests: stable, gradual decline, rapid decline, recovery, insufficient data"
+      ],
+      "passes": true,
+      "notes": "7 tests passing — stable/gradual/rapid decline, recovery, penalty application, signal field"
+    },
+    {
+      "id": "US-283",
+      "title": "Decision fatigue detection via override frequency spike analysis",
+      "description": "Add decision fatigue detector that monitors override frequency over sliding windows. When overrides spike (e.g., 5+ in 2 hours vs normal 1-2/day), flag as fatigue signal. Fatigue signal feeds into readiness computation as a penalty component.",
+      "acceptance": [
+        "FatigueDetector class or method computes override_rate over configurable window",
+        "Spike detection: override_rate > 2x historical average → fatigue_flag=True",
+        "fatigue_score (0.0-1.0) computed from spike intensity",
+        "ReadinessComputer applies fatigue penalty when fatigue_score > threshold",
+        "Configurable parameters: window_hours, spike_multiplier, min_override_count",
+        "At least 6 tests: no fatigue, mild spike, severe spike, recovery, edge cases"
+      ],
+      "passes": true,
+      "notes": "6 tests passing — no/few/uniform events, spike detection, fatigue bounded, signal field"
+    },
+    {
+      "id": "US-284",
+      "title": "Cognitive load estimation from message complexity",
+      "description": "Replace static cognitive_load heuristic with dynamic estimation based on message structural analysis. Count entities, decision points, conditional clauses, and topic shifts as proxies for cognitive load. Higher complexity → higher cognitive load → lower readiness.",
+      "acceptance": [
+        "CognitiveLoadEstimator analyzes message text for complexity indicators",
+        "At least 4 indicators: sentence count, question density, conditional words (if/but/however), topic shift detection",
+        "Returns cognitive_load_score (0.0-1.0) replacing static label",
+        "ReadinessComputer uses dynamic score instead of static enum mapping",
+        "Calibrated so simple messages ('feeling good') → 0.1-0.3, complex messages ('if the market drops but GDP is up and I should consider...') → 0.6-0.9",
+        "At least 6 tests with varied message complexity levels"
+      ],
+      "passes": true,
+      "notes": "6 tests passing — simple/complex/empty/question-heavy messages, conditional words, bounded score"
+    },
+    {
+      "id": "US-285",
+      "title": "Companion /coach command with actionable readiness-based recommendations",
+      "description": "Add /coach command to AuraCompanion that generates specific behavioral recommendations based on current readiness components. Instead of showing raw scores, translate low-scoring components into actionable advice.",
+      "acceptance": [
+        "/coach command returns 1-3 specific recommendations based on lowest readiness components",
+        "Recommendation templates for each component (emotional_state, cognitive_load, override_discipline, stress_level, confidence_trend, engagement)",
+        "Recommendations are contextual ('Your cognitive load is elevated — consider simplifying your trading plan today')",
+        "If readiness > 70, coach affirms readiness ('Your profile looks solid today')",
+        "At least 6 tests covering different low-component scenarios",
+        "No recommendation is generic — each references the specific component and score range"
+      ],
+      "passes": true,
+      "notes": "6 tests passing — no data, high readiness affirm, low component recommendations, specificity check"
+    }
+  ]
+}

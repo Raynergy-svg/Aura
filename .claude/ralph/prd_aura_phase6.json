@@ -1,0 +1,92 @@
+{
+  "phase": 6,
+  "title": "Code Quality, Input Validation & Defensive Hardening",
+  "codename": "aura_phase6_defensive_hardening",
+  "created": "2026-03-23",
+  "status": "complete",
+  "rationale": "Phase 5 research identified 14 improvement targets. Phase 6 addresses the critical/high items: unreachable exception handler, bare except blocks, input validation, message bounds, unbounded growth, and cloud_fallback silent failures.",
+  "stories": [
+    {
+      "id": "US-260",
+      "title": "Fix unreachable exception handler in readiness.py + refine bare excepts",
+      "description": "Fix duplicate exception handler in _write_signal() (line 278 unreachable). Replace bare except Exception blocks in readiness.py, conversation_processor.py, and cloud_fallback.py with specific exception types.",
+      "acceptance": [
+        "readiness.py:_write_signal has single exception handler (not duplicate)",
+        "At least 8 bare except-Exception replaced with specific types across core/prediction files",
+        "cloud_fallback.py rate-limit persistence logs errors instead of silently passing",
+        "Syntax check passes on all modified files"
+      ],
+      "passes": true,
+      "notes": "Fixed unreachable handler in readiness.py, specific exceptions in cloud_fallback.py"
+    },
+    {
+      "id": "US-261",
+      "title": "Input validation and bounds checking",
+      "description": "Add message length validation to ConversationProcessor.process_message(). Add label length validation to companion onboarding inputs. Cap _session_messages list growth.",
+      "acceptance": [
+        "process_message() rejects empty/whitespace-only messages with neutral ConversationSignals",
+        "process_message() truncates messages over 10000 chars with log warning",
+        "_session_messages capped at 500 entries (sliding window)",
+        "Onboarding labels truncated at 200 chars",
+        "All changes backwards-compatible (no breaking API changes)"
+      ],
+      "passes": true,
+      "notes": "Empty/oversized message validation, session cap 500, label truncation 200"
+    },
+    {
+      "id": "US-262",
+      "title": "Unbounded growth fixes: message history, training buffer",
+      "description": "Cap companion _message_history at 200 entries. Cap readiness_v2 training buffer at 500 samples. Add cleanup in end_session().",
+      "acceptance": [
+        "_message_history trimmed to last 200 entries on append",
+        "readiness_v2 training buffer capped at 500 samples (oldest dropped)",
+        "end_session() logs final session stats and closes resources cleanly",
+        "No memory leak in long-running companion sessions"
+      ],
+      "passes": true,
+      "notes": "Message history cap 200, training buffer cap 500 with oldest-drop"
+    },
+    {
+      "id": "US-263",
+      "title": "Cloud fallback observability + rate-limit error logging",
+      "description": "Add info-level logging when local fallbacks are used instead of cloud. Add error logging for rate-limit persistence failures. Add daily count reset logging.",
+      "acceptance": [
+        "Local fallback methods log INFO when invoked with pattern description",
+        "Rate-limit save/load failures log WARNING with error details",
+        "Daily count reset is logged once per day",
+        "Silent 'except: pass' blocks replaced with logged specific exceptions"
+      ],
+      "passes": true,
+      "notes": "INFO logging in 3 fallback methods, WARNING in rate-limit persistence"
+    },
+    {
+      "id": "US-264",
+      "title": "Companion response edge cases: type checks and context sourcing",
+      "description": "Add type safety for outcome signal access in _generate_response(). Source confidence/vote from bridge outcome when available instead of hardcoded 0.5.",
+      "acceptance": [
+        "outcome.streak accessed only after isinstance check or hasattr guard",
+        "Override predictor context pulls confidence from bridge outcome when available",
+        "Fallback to 0.5 only when outcome not available",
+        "No crash on None outcome or unexpected outcome type"
+      ],
+      "passes": true,
+      "notes": "hasattr guard on outcome.streak, bridge-sourced confidence/vote/regime"
+    },
+    {
+      "id": "US-265",
+      "title": "Tests for input validation, bounds, and edge cases (US-260 through US-264)",
+      "description": "Write tests verifying the defensive hardening changes: message validation, label truncation, buffer caps, fallback logging, and type safety.",
+      "acceptance": [
+        "Test: empty message returns neutral signals",
+        "Test: oversized message is truncated",
+        "Test: session message cap works (sliding window)",
+        "Test: training buffer cap works (oldest dropped)",
+        "Test: message history cap works",
+        "Test: onboarding label truncation",
+        "At least 12 new tests covering US-260 through US-264"
+      ],
+      "passes": true,
+      "notes": "14 tests in test_aura_hardening.py covering all US-260 through US-264"
+    }
+  ]
+}

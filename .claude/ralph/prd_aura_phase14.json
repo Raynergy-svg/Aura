@@ -1,0 +1,113 @@
+{
+  "phase": 14,
+  "title": "Graph-Informed Readiness, Decision Quality & Online Learning",
+  "codename": "aura_phase14_graph_intelligence",
+  "created": "2026-03-24",
+  "status": "complete",
+  "rationale": "Phase 13 completed signal wiring (bias penalties, VADER sentiment, cognitive load, override risk, STL trends). Codebase gap analysis + web research reveals 3 critical gaps: (1) SelfModelGraph accumulates rich relational data but ReadinessComputer never queries it — the graph is write-only for readiness purposes. (2) ReadinessModelV2 trains from batch data but never updates from Buddy's real-time outcome signals — model weights go stale. (3) OutcomeSignal lacks human context — T2 cross-domain correlation cannot detect 'trades when stressed underperform'. Plus web research identified Decision Quality Scoring as a high-value new capability — scoring the PROCESS of trading decisions independent of outcomes, based on 7 dimensions from behavioral economics literature (Steenbarger, Douglas, metacognition research). Phase 14 focuses on activating the graph for readiness, closing the online learning loop, enriching the bridge, and adding decision quality as a new analytical dimension.",
+  "stories": [
+    {
+      "id": "US-320",
+      "title": "Graph-informed readiness features from SelfModelGraph",
+      "description": "SelfModelGraph has nodes (Emotion, Decision, Pattern, Goal, Value) and edges (INFLUENCES, CORRELATES, TRIGGERS, PREDICTS) with temporal decay, but ReadinessComputer never queries it. Extract 4 graph-derived features: (1) emotional_volatility — standard deviation of recent Emotion node strengths (high volatility = unstable state, penalizes readiness). (2) goal_alignment — average strength of Goal nodes connected to recent Decision nodes (low = drifting from goals). (3) pattern_load — count of active RECURRING/PROMOTED patterns (too many active patterns = cognitive overload signal). (4) negative_influence_density — ratio of negative-sentiment edges (TRIGGERS with low-strength targets) to total recent edges. Blend these 4 features into readiness via a new graph_context_score component (weight 0.1, reducing other component weights proportionally).",
+      "acceptance": [
+        "New method ReadinessComputer._compute_graph_features(graph: SelfModelGraph) -> Dict[str, float] returning 4 features",
+        "emotional_volatility: std dev of Emotion node strengths from last 14 days, normalized to 0-1",
+        "goal_alignment: avg strength of Goal nodes connected to recent Decisions (last 7 days), 0-1",
+        "pattern_load: count of active non-archived patterns / 20 (capped at 1.0)",
+        "negative_influence_density: ratio of weak edges (<0.3 strength) to total edges in last 14 days, 0-1",
+        "graph_context_score = 0.3 * (1 - emotional_volatility) + 0.3 * goal_alignment + 0.2 * (1 - pattern_load) + 0.2 * (1 - negative_influence_density)",
+        "compute() accepts optional graph: SelfModelGraph parameter",
+        "When graph is None, graph_context_score defaults to 0.5 (neutral, backward compatible)",
+        "At least 8 tests: no graph neutral, high emotional volatility lowers score, strong goal alignment boosts, high pattern load penalizes, negative density penalizes, combined features, graph with no emotion nodes, graph with no edges"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-321",
+      "title": "Decision Quality Scorer with 7-dimension process evaluation",
+      "description": "Current system scores readiness (are you FIT to trade?) but not decision quality (did you DECIDE well?). These are independent axes — a ready trader can make poor decisions, and a stressed trader can follow good process. Implement DecisionQualityScorer with 7 dimensions from behavioral economics research: process_adherence (0.25 weight), information_adequacy (0.20), metacognitive_awareness (0.15), uncertainty_acknowledgment (0.15), rationale_clarity (0.10), emotional_regulation (0.10), cognitive_reflection (0.05). Each dimension scored 0-1 from chat signal extraction. Composite score 0-100. Add decision_quality_score to ReadinessSignal for Buddy visibility.",
+      "acceptance": [
+        "New class DecisionQualityScorer in src/aura/scoring/decision_quality.py",
+        "7 scoring methods (_score_process_adherence through _score_cognitive_reflection) each returning 0-1",
+        "extract_signals(conversation_text, trade_metadata) extracts keyword signals per dimension",
+        "score(conversation_text, trade_metadata) returns DecisionQualityScore dataclass with all 7 dimensions + composite",
+        "Composite = weighted sum of 7 dimensions (weights: 0.25/0.20/0.15/0.15/0.10/0.10/0.05)",
+        "ReadinessSignal extended with decision_quality_score: float = 0.0",
+        "ReadinessSignal.to_dict() includes decision_quality_score",
+        "DecisionQualityScore.to_dict() returns full breakdown for bridge signal",
+        "At least 10 tests: each dimension scored correctly (7 tests), composite weighted correctly, no signals returns baseline, high-quality conversation scores high"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-322",
+      "title": "Online learning loop: outcome signals retrain ReadinessModelV2",
+      "description": "ReadinessModelV2 trains from batch data but never updates from Buddy's outcome signals. Each trade outcome (win/loss + PnL) should create a training sample mapping the readiness state at trade time to the outcome. Implement update_from_outcome() on ReadinessModelV2 that performs incremental SGD update with a single new sample. Add training_from_bridge() on ReadinessComputer that reads the latest outcome_signal, constructs a ReadinessTrainingSample, and calls update_from_outcome(). Track model staleness via last_trained_at timestamp.",
+      "acceptance": [
+        "ReadinessModelV2 gains update_from_outcome(sample: ReadinessTrainingSample, learning_rate: float = 0.01) method",
+        "update_from_outcome performs single-sample SGD: weights -= lr * gradient for Ridge regression",
+        "Gradient computed from prediction error on the new sample's feature vector",
+        "ReadinessComputer gains train_from_bridge_outcome(outcome_signal: dict) method",
+        "train_from_bridge_outcome constructs ReadinessTrainingSample from last readiness state + outcome PnL",
+        "Positive PnL outcomes map to target readiness 80+, negative to 30-",
+        "Model tracks last_trained_at timestamp and sample_count",
+        "Untrained model (sample_count < 20) skips online updates (batch training required first)",
+        "At least 8 tests: untrained skips update, single update changes weights, multiple updates converge, negative outcome lowers readiness prediction, positive boosts, staleness tracking, gradient direction correct, learning rate respected"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-323",
+      "title": "Bridge outcome signal enrichment with human context",
+      "description": "OutcomeSignal from Buddy contains only market context (PnL, regime, win_rate). US-297 added optional emotional_state field but nothing populates it. When Aura receives an outcome signal, enrich it with current emotional state, cognitive load, detected biases, and decision quality score from Aura's most recent readiness computation. Store enriched signal back to bridge. This unlocks T2 cross-domain correlation between human state and trade performance.",
+      "acceptance": [
+        "New method ReadinessComputer.get_last_state_snapshot() -> Dict returning last computed readiness components + bias_scores + override_loss_risk",
+        "FeedbackBridge gains enrich_outcome_signal(outcome: dict, human_context: dict) -> dict method",
+        "Enrichment adds: emotional_state_score, cognitive_load_score, bias_count, override_loss_risk, decision_quality_score, readiness_at_trade_time",
+        "Enriched signal written back to outcome_signal.json via atomic write",
+        "ReadinessComputer caches last state snapshot after each compute() call",
+        "When no cached state exists, enrichment adds empty context (backward compatible)",
+        "At least 7 tests: enrichment adds all fields, no cached state adds empty, atomic write persists, roundtrip read-enrich-write, enriched fields accessible by T2, missing outcome fields handled, enrichment preserves original fields"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-324",
+      "title": "Anomaly-to-pattern cascade: wire ReadinessAnomalyDetector into PatternEngine",
+      "description": "ReadinessAnomalyDetector (US-313) detects readiness deviations but anomaly_detected is never consumed downstream. Wire anomalies into the pattern detection pipeline: on anomaly_detected=True, log a Life_Event node to the self-model graph with severity and direction. On T2 detection runs, include recent Life_Event nodes as context for cross-domain correlation. This enables T2 to discover patterns like 'anomaly severity 0.8 + override spike = impaired state'. Add /anomalies CLI command showing recent anomalies with timestamps and severities.",
+      "acceptance": [
+        "ReadinessComputer.compute() checks anomaly_detected after compute, logs Life_Event node to graph if anomaly detected",
+        "Life_Event node has properties: severity (from AnomalyResult), direction ('drop'/'spike'), readiness_at_time, timestamp",
+        "PatternEngine.run_all() passes recent Life_Event nodes (last 30 days) to T2 as anomaly_context parameter",
+        "T2 detector gains _correlate_anomalies(anomaly_events, override_events) -> list method finding co-occurrences",
+        "AuraCompanion handles /anomalies command: shows last 10 anomalies with timestamp, severity, direction, readiness",
+        "When no graph provided to compute(), anomaly logging is skipped (backward compatible)",
+        "At least 8 tests: anomaly creates Life_Event node, severity propagated, direction correct for drop vs spike, T2 receives anomaly context, /anomalies output format, no anomaly no node, multiple anomalies create multiple nodes, co-occurrence detection finds overlapping events"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-325",
+      "title": "Phase 14 integration tests + /quality CLI command",
+      "description": "Write integration tests that verify the full pipeline: (1) graph features flow from SelfModelGraph through ReadinessComputer to ReadinessSignal, (2) decision quality score appears in bridge signal, (3) outcome signal enrichment roundtrips through bridge, (4) anomaly detection cascades to graph Life_Event nodes. Plus add /quality CLI command to AuraCompanion that shows decision quality breakdown for the current session's trading discussion.",
+      "acceptance": [
+        "At least 3 integration tests using real SelfModelGraph + ReadinessComputer instances (no mocks on production code)",
+        "Test 1: Populate graph with Emotion/Goal/Decision nodes → compute() with graph → readiness influenced by graph features",
+        "Test 2: Score a conversation for decision quality → verify composite in ReadinessSignal → verify bridge dict includes it",
+        "Test 3: Enrich outcome signal → verify enriched fields persist → verify T2 can read enriched data",
+        "Test 4: Trigger anomaly → verify Life_Event node in graph → verify /anomalies shows it",
+        "AuraCompanion handles /quality command: extracts recent conversation, scores decision quality, displays 7-dimension breakdown with composite",
+        "All integration tests use NEUTRAL_CIRCADIAN to isolate from time-of-day effects",
+        "At least 7 tests total across integration + /quality command scenarios"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

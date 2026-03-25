@@ -1,0 +1,96 @@
+{
+  "phase": 7,
+  "title": "Companion Behavioral Testing & Configuration Externalization",
+  "codename": "aura_phase7_companion_tests_config",
+  "created": "2026-03-23",
+  "status": "complete",
+  "rationale": "Phase 6 research identified three critical gaps: (1) companion.py has 930 lines with zero behavioral tests — regressions are invisible, (2) 11 hardcoded pattern thresholds across tier1/tier2/tier3 prevent tuning without code changes, (3) prediction model persistence uses raw .write_text() without fcntl locking, risking corruption under concurrent access. Phase 7 addresses all three.",
+  "stories": [
+    {
+      "id": "US-270",
+      "title": "Companion CLI command handler behavioral tests",
+      "description": "Create behavioral tests for all 8 command handlers in AuraCompanion: /status, /graph, /patterns, /readiness, /override, /journal, /help, /quit. Mock SelfModelGraph, FeedbackBridge, ConversationProcessor with canned data. Verify output contains expected information for each command.",
+      "acceptance": [
+        "Test coverage for all 8 slash-command handlers",
+        "Each test verifies output content (not just no-crash)",
+        "Mocks are minimal — only external dependencies (DB, bridge, filesystem)",
+        "At least 10 new tests in a dedicated test file",
+        "All tests pass with pytest"
+      ],
+      "passes": true,
+      "notes": "15 command handler tests + 4 edge cases in test_aura_companion_commands.py"
+    },
+    {
+      "id": "US-271",
+      "title": "Companion process_input resilience tests with exception injection",
+      "description": "Test the 6-stage pipeline in process_input() by injecting exceptions at each stage (signal extraction, graph log, readiness computation, pattern detection, response generation, bridge write). Verify each stage fails independently without crashing the session.",
+      "acceptance": [
+        "6 tests — one per pipeline stage exception injection",
+        "Each test injects an exception at one specific stage",
+        "Verify companion continues (returns a response, does not raise)",
+        "Verify fallback behavior per stage (neutral signals, last-known readiness, safe response)",
+        "All tests pass with pytest"
+      ],
+      "passes": true,
+      "notes": "10 resilience tests in test_aura_companion_commands.py"
+    },
+    {
+      "id": "US-272",
+      "title": "Configurable pattern thresholds via .aura/config.json",
+      "description": "Extract 11 hardcoded constants from tier1.py (MIN_FREQUENCY=3, RECENCY_WINDOW_DAYS=14), tier2.py (MIN_SAMPLE_SIZE=5, CORRELATION_THRESHOLD=0.6), and tier3.py (MIN_WEEKS_FOR_ARC=4, TREND_SIGNIFICANCE=0.15, etc.) into a loadable config. PatternEngine reads from .aura/config.json at init, falls back to current hardcoded defaults if file missing.",
+      "acceptance": [
+        "AuraConfig class or dict loader reads .aura/config.json",
+        "All 11 pattern thresholds moved to config with current values as defaults",
+        "PatternEngine passes config values to T1/T2/T3 constructors",
+        "Missing config file → all defaults preserved (no behavior change)",
+        "Partial config → missing keys use defaults",
+        "At least 4 tests verifying config load, defaults, partial override, and tier passthrough"
+      ],
+      "passes": true,
+      "notes": "config.py created, tier1/tier2/tier3/engine modified, 15 tests in test_aura_config.py"
+    },
+    {
+      "id": "US-273",
+      "title": "Locked writes in prediction model persistence using FeedbackBridge helpers",
+      "description": "Replace 3 raw .write_text() calls in readiness_v2.py and override_predictor.py with fcntl-locked atomic writes. Reuse the _locked_write pattern from FeedbackBridge or extract a PersistenceHelper utility.",
+      "acceptance": [
+        "readiness_v2.py save_model() uses locked atomic write",
+        "readiness_v2.py _save_buffer() uses locked atomic write",
+        "override_predictor.py save_model() uses locked atomic write",
+        "PersistenceHelper or equivalent extracted as reusable utility",
+        "Fallback to direct write if fcntl unavailable (Windows compat)",
+        "At least 3 tests verifying locked write behavior"
+      ],
+      "passes": true,
+      "notes": "persistence.py utility created, all 3 write_text calls replaced, 16 tests in test_aura_persistence.py"
+    },
+    {
+      "id": "US-274",
+      "title": "Pattern lifecycle end-to-end tests",
+      "description": "Test the full pattern lifecycle: T1 detects → frequency triggers RECURRING → T2 cross-correlates → T3 narrative arc. Use synthetic time-series data with planted patterns to verify the cascade works end-to-end.",
+      "acceptance": [
+        "Test T1: planted daily pattern detected after MIN_FREQUENCY occurrences",
+        "Test T2: cross-domain correlation detected with synthetic correlated series",
+        "Test T3: narrative arc detected with multi-week synthetic data",
+        "Test cascade: T1 output feeds T2, T2 output feeds T3 (inter-tier reload verified)",
+        "At least 5 new tests"
+      ],
+      "passes": true,
+      "notes": "5 lifecycle tests in test_aura_config.py including configurable threshold verification"
+    },
+    {
+      "id": "US-275",
+      "title": "Companion-Bridge integration tests",
+      "description": "Test the companion's interaction with the bridge: readiness signal write after computation, outcome signal read for override predictor context, override event logging. Use temp directories for bridge files.",
+      "acceptance": [
+        "Test: readiness computation writes signal to bridge path",
+        "Test: override predictor context reads from bridge outcome",
+        "Test: override event appended to JSONL after user override",
+        "Test: companion handles missing/corrupt bridge files gracefully",
+        "At least 4 new tests"
+      ],
+      "passes": true,
+      "notes": "4 integration tests in test_aura_config.py"
+    }
+  ]
+}

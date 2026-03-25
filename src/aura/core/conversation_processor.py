@@ -1,0 +1,793 @@
+"""Conversation processor — extracts emotional signals from user messages.
+
+Phase 1: Keyword-based sentiment and stress detection.
+US-280: Negation-aware emotional signal extraction.
+US-281: Emotional intensity scaling with modifier words.
+Phase 2: Will use Phi-4 14B via MLX for deep understanding.
+
+This module is the "ear" of Aura — it listens to what the user says and
+extracts structured signals that feed into the readiness computation.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+logger = logging.getLogger(__name__)
+
+
+# --- Keyword Dictionaries ---
+# These are Phase 1 heuristics. Phase 2 replaces with LLM inference.
+
+STRESS_KEYWORDS: Set[str] = {
+    # Fix H-02 (FOLLOWUP): Removed bare "stress" to prevent double-counting.
+    # "stress" is a substring of "stressed" — the raw-text pre-check (kw in message_lower)
+    # matched both when the message contained "stressed", inflating stress scores by ~50%.
+    # "stressed" covers the intent; if a user says "under stress" it's covered by "pressure".
+    "stressed", "overwhelmed", "exhausted", "tired", "anxious",
+    "worried", "frustrated", "angry", "can't sleep", "insomnia", "burnout",
+    "deadline", "pressure", "overworked", "losing money", "lost money",
+    "argument", "fight", "conflict", "breakup", "divorce",
+}
+
+POSITIVE_KEYWORDS: Set[str] = {
+    "great", "amazing", "wonderful", "happy", "excited", "energized",
+    "productive", "focused", "calm", "relaxed", "confident", "winning",
+    "breakthrough", "inspired", "motivated", "grateful", "optimistic",
+}
+
+# --- US-280: Negation words ---
+# Negation within NEGATION_WINDOW tokens before a keyword cancels its signal.
+NEGATION_WORDS: Set[str] = {
+    "not", "no", "never", "neither", "nor", "hardly", "barely",
+    "don't", "dont", "doesn't", "doesnt", "didn't", "didnt",
+    "can't", "cant", "cannot", "won't", "wont", "wouldn't", "wouldnt",
+    "isn't", "isnt", "wasn't", "wasnt", "aren't", "arent", "weren't", "werent",
+    "hasn't", "hasnt", "haven't", "havent", "hadn't", "hadnt",
+    "shouldn't", "shouldnt", "couldn't", "couldnt",
+}
+NEGATION_WINDOW = 3  # tokens before keyword to check for negation
+
+# --- US-281: Intensity modifiers ---
+# Amplifiers boost keyword signal; diminishers reduce it.
+AMPLIFIER_WORDS: Set[str] = {
+    "extremely", "very", "incredibly", "absolutely", "completely", "totally",
+    "severely", "deeply", "intensely", "terribly", "really", "so", "utterly",
+    "massively", "hugely", "thoroughly",
+}
+DIMINISHER_WORDS: Set[str] = {
+    "slightly", "somewhat", "a bit", "a little", "mildly", "marginally",
+    "fairly", "kind of", "sort of", "partly", "barely",
+}
+AMPLIFIER_MULTIPLIER = 1.5
+DIMINISHER_MULTIPLIER = 0.5
+
+FATIGUE_KEYWORDS: Set[str] = {
+    "tired", "exhausted", "didn't sleep", "couldn't sleep", "insomnia",
+    "drained", "low energy", "fatigued", "burnt out", "running on empty",
+}
+
+TRADING_OVERRIDE_KEYWORDS: Set[str] = {
+    "override", "ignored buddy", "took the trade anyway", "closed early",
+    "moved my stop", "changed the sl", "changed the tp", "didn't listen",
+    "went against", "manual trade", "gut feeling", "just felt like",
+}
+
+STRESSOR_KEYWORDS: Dict[str, str] = {
+    "career": "career decision",
+    "job": "career change",
+    "quit": "career change",
+    "promotion": "career decision",
+    "interview": "job search",
+    "relationship": "relationship stress",
+    "partner": "relationship stress",
+    "health": "health concern",
+    "sick": "health concern",
+    "money": "financial stress",
+    "debt": "financial stress",
+    "moving": "relocation",
+    "baby": "new parent",
+    "pregnant": "expecting child",
+    "parent": "family responsibility",
+}
+
+
+@dataclass
+class ConversationSignals:
+    """Extracted signals from a conversation exchange."""
+
+    emotional_state: str = "neutral"  # calm, anxious, stressed, energized, fatigued, etc.
+    stress_keywords_found: List[str] = field(default_factory=list)
+    positive_keywords_found: List[str] = field(default_factory=list)
+    detected_stressors: List[str] = field(default_factory=list)
+    fatigue_detected: bool = False
+    override_mentioned: bool = False
+    sentiment_score: float = 0.5  # 0=very negative, 1=very positive
+    topics: List[str] = field(default_factory=list)
+    confidence_trend: str = "stable"  # rising, falling, stable
+    message_count: int = 0
+    # US-281: Intensity score — continuous 0.0 (minimal) to 1.0 (maximum)
+    intensity_score: float = 0.5
+    # US-293: Cognitive bias scores
+    bias_scores: Dict[str, float] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "emotional_state": self.emotional_state,
+            "stress_keywords": self.stress_keywords_found,
+            "positive_keywords": self.positive_keywords_found,
+            "detected_stressors": self.detected_stressors,
+            "fatigue_detected": self.fatigue_detected,
+            "override_mentioned": self.override_mentioned,
+            "sentiment_score": round(self.sentiment_score, 3),
+            "topics": self.topics,
+            "confidence_trend": self.confidence_trend,
+            "intensity_score": round(self.intensity_score, 3),
+            "bias_scores": {k: round(v, 3) for k, v in self.bias_scores.items()},
+        }
+
+
+class BiasDetector:
+    """US-293: Detects trading-specific cognitive biases from conversation text.
+
+    Detects 4 biases:
+    1. Disposition effect — holding losers, cutting winners early
+    2. Loss aversion — disproportionate focus on downside
+    3. Recency bias — overweighting recent events vs historical
+    4. Confirmation bias — seeking validation for existing beliefs
+    """
+
+    # Disposition effect phrases
+    DISPOSITION_PHRASES = [
+        "still waiting", "might come back", "bounce back", "hasn't hit my stop",
+        "holding on", "just needs time", "average down", "bag holding",
+        "it'll recover", "diamond hands",
+    ]
+    COUNTER_DISPOSITION_PHRASES = [
+        "stopped out", "took profit", "cut loss", "closed position",
+        "let it run", "stuck to plan", "followed the system", "took the loss",
+    ]
+
+    # Loss aversion keywords
+    LOSS_WORDS = ["risk", "lose", "loss", "drawdown", "fear", "worried", "scared", "afraid", "downside", "danger"]
+    GAIN_WORDS = ["profit", "gain", "win", "winning", "upside", "success", "opportunity", "reward"]
+
+    # Recency bias keywords
+    RECENT_WORDS = ["today", "just", "recent", "recently", "this week", "yesterday", "right now", "latest"]
+    HISTORICAL_WORDS = ["historically", "typically", "always", "usually", "long term", "over time", "in the past"]
+
+    # Confirmation bias phrases
+    CONFIRMATION_PHRASES = [
+        "proving me right", "i knew it", "told you so", "see what i mean",
+        "exactly what i expected", "confirms my", "validates my", "that proves",
+        "i was right", "just as i thought",
+    ]
+    DISMISSIVE_PHRASES = [
+        "that's different", "special case", "doesn't apply", "exception",
+        "but that's", "this time is different", "not the same",
+    ]
+
+    # US-327: Sunk cost bias
+    SUNK_COST_PHRASES = [
+        "already invested", "too much time", "can't give up now",
+        "need to make it back", "put too much into", "come this far",
+        "can't walk away", "too deep", "committed too much",
+    ]
+
+    # US-327: Anchoring bias
+    ANCHORING_PHRASES = [
+        "bought at", "entry was", "my cost basis", "waiting for",
+        "need it to get back to", "original price", "break even",
+    ]
+    ANCHORING_PRICE_PATTERN = r'\b\d+\.\d{2,5}\b'  # Specific price mentions like 1.2345
+
+    # US-327: Overconfidence bias
+    OVERCONFIDENCE_PHRASES = [
+        "can't lose", "easy money", "guaranteed", "i know exactly",
+        "no way this fails", "sure thing", "100%", "slam dunk",
+        "free money", "this is easy", "obvious trade",
+    ]
+
+    # US-327: Hindsight bias
+    HINDSIGHT_PHRASES = [
+        "knew it", "should have seen", "was obvious", "saw it coming",
+        "told you so", "predicted this", "i called it", "knew this would happen",
+    ]
+
+    # US-327: Attribution error bias
+    EXTERNAL_BLAME_PHRASES = [
+        "rigged", "bad luck", "unfair", "manipulated", "market maker",
+        "broker cheated", "stop hunted", "they always", "system is broken",
+    ]
+    SELF_CREDIT_PHRASES = [
+        "i called it", "my analysis was right", "i'm the best",
+        "nailed it", "genius trade", "my skill",
+    ]
+
+    def detect_biases(self, message: str) -> Dict[str, float]:
+        """Detect cognitive biases from message text.
+
+        Returns:
+            Dict with bias scores (0.0-1.0 each):
+            - disposition_effect
+            - loss_aversion
+            - recency_bias
+            - confirmation_bias
+            - sunk_cost (US-327)
+            - anchoring (US-327)
+            - overconfidence (US-327)
+            - hindsight (US-327)
+            - attribution_error (US-327)
+        """
+        if not message or not message.strip():
+            return {
+                "disposition_effect": 0.0,
+                "loss_aversion": 0.0,
+                "recency_bias": 0.0,
+                "confirmation_bias": 0.0,
+                "sunk_cost": 0.0,
+                "anchoring": 0.0,
+                "overconfidence": 0.0,
+                "hindsight": 0.0,
+                "attribution_error": 0.0,
+            }
+
+        text = message.lower()
+        word_count = max(len(text.split()), 1)
+
+        # 1. Disposition effect
+        disposition_hits = sum(1 for p in self.DISPOSITION_PHRASES if p in text)
+        counter_hits = sum(1 for p in self.COUNTER_DISPOSITION_PHRASES if p in text)
+        disposition_raw = max(0, disposition_hits - counter_hits)
+        disposition_score = min(1.0, disposition_raw / 3.0)
+
+        # 2. Loss aversion
+        loss_count = sum(1 for w in self.LOSS_WORDS if w in text)
+        gain_count = sum(1 for w in self.GAIN_WORDS if w in text)
+        if gain_count > 0 and loss_count > 2 * gain_count:
+            loss_aversion_score = min(1.0, (loss_count - gain_count) / 5.0)
+        elif gain_count == 0 and loss_count >= 2:
+            loss_aversion_score = min(1.0, loss_count / 5.0)
+        else:
+            loss_aversion_score = 0.0
+
+        # 3. Recency bias
+        recent_count = sum(1 for w in self.RECENT_WORDS if w in text)
+        historical_count = sum(1 for w in self.HISTORICAL_WORDS if w in text)
+        recency_raw = max(0, recent_count - historical_count)
+        recency_score = min(1.0, recency_raw / 4.0)
+
+        # 4. Confirmation bias
+        confirm_hits = sum(1 for p in self.CONFIRMATION_PHRASES if p in text)
+        dismiss_hits = sum(1 for p in self.DISMISSIVE_PHRASES if p in text)
+        confirmation_score = min(1.0, (confirm_hits + dismiss_hits) / 3.0)
+
+        # 5. Sunk cost (US-327)
+        sunk_cost_hits = sum(1 for p in self.SUNK_COST_PHRASES if p in text)
+        sunk_cost_score = min(1.0, sunk_cost_hits / 2.0)
+
+        # 6. Anchoring (US-327)
+        anchoring_hits = sum(1 for p in self.ANCHORING_PHRASES if p in text)
+        import re as _re
+        price_mentions = len(_re.findall(self.ANCHORING_PRICE_PATTERN, text))
+        anchoring_score = min(1.0, (anchoring_hits + min(price_mentions, 3) * 0.3) / 3.0)
+
+        # 7. Overconfidence (US-327)
+        overconfidence_hits = sum(1 for p in self.OVERCONFIDENCE_PHRASES if p in text)
+        overconfidence_score = min(1.0, overconfidence_hits / 2.0)
+
+        # 8. Hindsight (US-327)
+        hindsight_hits = sum(1 for p in self.HINDSIGHT_PHRASES if p in text)
+        hindsight_score = min(1.0, hindsight_hits / 2.0)
+
+        # 9. Attribution error (US-327)
+        external_hits = sum(1 for p in self.EXTERNAL_BLAME_PHRASES if p in text)
+        self_credit_hits = sum(1 for p in self.SELF_CREDIT_PHRASES if p in text)
+        # Both external blame AND excessive self-credit indicate attribution error
+        attribution_raw = external_hits + max(0, self_credit_hits - 1)  # 1 self-credit is ok
+        attribution_score = min(1.0, attribution_raw / 3.0)
+
+        return {
+            "disposition_effect": round(disposition_score, 3),
+            "loss_aversion": round(loss_aversion_score, 3),
+            "recency_bias": round(recency_score, 3),
+            "confirmation_bias": round(confirmation_score, 3),
+            "sunk_cost": round(sunk_cost_score, 3),
+            "anchoring": round(anchoring_score, 3),
+            "overconfidence": round(overconfidence_score, 3),
+            "hindsight": round(hindsight_score, 3),
+            "attribution_error": round(attribution_score, 3),
+        }
+
+    def aggregate_bias_score(self, biases: Dict[str, float]) -> float:
+        """Compute aggregate bias score (0.0-1.0) from individual biases."""
+        if not biases:
+            return 0.0
+        return sum(biases.values()) / max(len(biases), 1)
+
+
+class TiltDetector:
+    """US-304: Detects post-loss emotional spirals (tilt/revenge trading).
+
+    Three indicators:
+    1. Sentiment trajectory: 3+ consecutive messages with declining sentiment
+    2. Revenge keywords: phrases signaling desire to "make it back"
+    3. Override frequency spike: high override rate within 30min of a loss
+
+    Tilt score (0-1) feeds as penalty into readiness.
+    """
+
+    REVENGE_KEYWORDS: Set[str] = {
+        "make it back", "just one more", "recover", "double down",
+        "revenge trade", "get it back", "need to win", "one more try",
+        "can't end like this", "make up for", "undo the loss",
+        "compensate", "recoup", "breakeven trade",
+    }
+
+    # Weights for combining indicators
+    SENTIMENT_WEIGHT = 0.4
+    REVENGE_WEIGHT = 0.35
+    OVERRIDE_SPIKE_WEIGHT = 0.25
+
+    def detect_tilt(
+        self,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        recent_overrides: Optional[List[Dict[str, Any]]] = None,
+        recent_outcomes: Optional[List[Dict[str, Any]]] = None,
+    ) -> float:
+        """Detect tilt from conversation patterns + override/outcome data.
+
+        Args:
+            messages: Recent messages with 'content' and optional 'sentiment' fields
+            recent_overrides: Override events with timestamps
+            recent_outcomes: Recent trade outcomes with 'trade_won' field
+
+        Returns:
+            Tilt score: 0.0 (no tilt) to 1.0 (severe tilt)
+        """
+        messages = messages or []
+        recent_overrides = recent_overrides or []
+        recent_outcomes = recent_outcomes or []
+
+        if len(messages) < 2:
+            return 0.0
+
+        # 1. Sentiment trajectory — check for 3+ consecutive declines
+        sentiment_indicator = self._check_sentiment_decline(messages)
+
+        # 2. Revenge keyword detection
+        revenge_indicator = self._check_revenge_keywords(messages)
+
+        # 3. Override frequency spike after loss
+        spike_indicator = self._check_override_spike(recent_overrides, recent_outcomes)
+
+        # Combine with weights
+        tilt = (
+            sentiment_indicator * self.SENTIMENT_WEIGHT
+            + revenge_indicator * self.REVENGE_WEIGHT
+            + spike_indicator * self.OVERRIDE_SPIKE_WEIGHT
+        )
+        return max(0.0, min(1.0, tilt))
+
+    def _check_sentiment_decline(self, messages: List[Dict[str, Any]]) -> float:
+        """Check for consecutive declining sentiment in recent messages."""
+        # Extract sentiment scores from messages (use 0.5 as default)
+        sentiments = []
+        for m in messages[-10:]:  # Last 10 messages
+            if isinstance(m, dict):
+                sentiments.append(m.get("sentiment", 0.5))
+            else:
+                sentiments.append(0.5)
+
+        if len(sentiments) < 3:
+            return 0.0
+
+        # Count consecutive declines from the end
+        consecutive_declines = 0
+        for i in range(len(sentiments) - 1, 0, -1):
+            if sentiments[i] < sentiments[i - 1]:
+                consecutive_declines += 1
+            else:
+                break
+
+        if consecutive_declines >= 3:
+            return min(1.0, consecutive_declines / 5.0)  # 5+ declines = max
+        return 0.0
+
+    def _check_revenge_keywords(self, messages: List[Dict[str, Any]]) -> float:
+        """Check for revenge trading keywords in recent messages."""
+        total_hits = 0
+        for m in messages[-5:]:  # Last 5 messages
+            content = ""
+            if isinstance(m, dict):
+                content = m.get("content", "").lower()
+            elif isinstance(m, str):
+                content = m.lower()
+            if not content:
+                continue
+            for kw in self.REVENGE_KEYWORDS:
+                if kw in content:
+                    total_hits += 1
+
+        return min(1.0, total_hits / 3.0)  # 3+ hits = max
+
+    def _check_override_spike(
+        self,
+        overrides: List[Dict[str, Any]],
+        outcomes: List[Dict[str, Any]],
+    ) -> float:
+        """Check if override frequency spiked after a recent loss."""
+        # Check if there was a recent loss
+        has_recent_loss = False
+        for o in outcomes[-5:]:
+            if isinstance(o, dict) and not o.get("trade_won", True):
+                has_recent_loss = True
+                break
+
+        if not has_recent_loss:
+            return 0.0
+
+        # Count overrides — if > 2 after a loss, it's a spike
+        override_count = len(overrides[-5:]) if overrides else 0
+        if override_count >= 3:
+            return min(1.0, (override_count - 2) / 3.0)
+        return 0.0
+
+
+class ConversationProcessor:
+    """Processes conversation messages and extracts emotional/cognitive signals.
+
+    Phase 1: keyword-based analysis.
+    Phase 2: Phi-4 14B inference via MLX for deep understanding.
+    """
+
+    def __init__(self):
+        self._session_messages: List[Dict[str, str]] = []
+        self._cumulative_stress: float = 0.0
+        self._cumulative_positive: float = 0.0
+        self._previous_sentiment: float = 0.5
+        # US-293: Bias detection
+        self._bias_detector = BiasDetector()
+        # US-315: VADER sentiment analyzer (optional — graceful fallback)
+        self._vader = None
+        try:
+            from nltk.sentiment import SentimentIntensityAnalyzer
+            self._vader = SentimentIntensityAnalyzer()
+        except (ImportError, LookupError):
+            logger.warning("US-315: VADER not available — using keyword-only sentiment")
+
+    # US-261: Input validation constants
+    MAX_MESSAGE_LENGTH = 10000
+    MAX_SESSION_MESSAGES = 500
+
+    def _is_negated(self, tokens: List[str], keyword_start_idx: int) -> bool:
+        """US-280: Check if keyword at index is negated by a preceding negation word.
+
+        Scans up to NEGATION_WINDOW tokens before the keyword for negation words.
+        Handles double negation: if two negation words precede, they cancel out.
+
+        Args:
+            tokens: Tokenized message (lowercased)
+            keyword_start_idx: Index of the first token of the keyword
+
+        Returns:
+            True if keyword is negated (odd number of negation words in window)
+        """
+        window_start = max(0, keyword_start_idx - NEGATION_WINDOW)
+        window = tokens[window_start:keyword_start_idx]
+        negation_count = sum(1 for t in window if t in NEGATION_WORDS)
+        return negation_count % 2 == 1  # Odd = negated, even = not negated
+
+    def _get_intensity_modifier(self, tokens: List[str], keyword_start_idx: int) -> float:
+        """US-281: Get intensity modifier for keyword from surrounding context.
+
+        Scans up to NEGATION_WINDOW tokens before the keyword for
+        amplifier or diminisher words.
+
+        Returns:
+            Multiplier: AMPLIFIER_MULTIPLIER, DIMINISHER_MULTIPLIER, or 1.0 (neutral)
+        """
+        window_start = max(0, keyword_start_idx - NEGATION_WINDOW)
+        window = tokens[window_start:keyword_start_idx]
+
+        for token in window:
+            if token in AMPLIFIER_WORDS:
+                return AMPLIFIER_MULTIPLIER
+            if token in DIMINISHER_WORDS:
+                return DIMINISHER_MULTIPLIER
+
+        # Also check multi-word diminishers in the raw text window
+        window_text = " ".join(window)
+        for phrase in DIMINISHER_WORDS:
+            if " " in phrase and phrase in window_text:
+                return DIMINISHER_MULTIPLIER
+
+        return 1.0
+
+    def _find_keyword_in_tokens(self, tokens: List[str], keyword: str) -> int:
+        """Find the starting token index of a keyword (handles multi-word keywords).
+
+        Returns -1 if not found.
+        """
+        kw_tokens = keyword.split()
+        kw_len = len(kw_tokens)
+        for i in range(len(tokens) - kw_len + 1):
+            if tokens[i:i + kw_len] == kw_tokens:
+                return i
+        return -1
+
+    def _extract_keywords_with_negation(
+        self, tokens: List[str], keywords: Set[str], message_lower: str
+    ) -> Tuple[List[str], float]:
+        """US-280+281: Extract keywords, filtering negated ones and computing intensity.
+
+        Returns:
+            Tuple of (found_keywords, total_intensity_multiplier)
+        """
+        found = []
+        total_intensity = 0.0
+
+        for kw in keywords:
+            if kw not in message_lower:
+                continue
+            idx = self._find_keyword_in_tokens(tokens, kw)
+            if idx == -1:
+                # Multi-word keyword found in raw text but not cleanly tokenized
+                # Fall back to simple check without negation (backward compat)
+                found.append(kw)
+                total_intensity += 1.0
+                continue
+
+            if self._is_negated(tokens, idx):
+                logger.debug("US-280: Keyword '%s' negated — skipping", kw)
+                continue
+
+            modifier = self._get_intensity_modifier(tokens, idx)
+            found.append(kw)
+            total_intensity += modifier
+
+        avg_intensity = total_intensity / len(found) if found else 1.0
+        return found, avg_intensity
+
+    def _compute_vader_sentiment(self, message: str) -> Optional[float]:
+        """US-315: Compute VADER compound sentiment score.
+
+        Returns compound score (-1 to +1) or None if VADER unavailable.
+        VADER handles negation, emphasis, and contrast automatically.
+        """
+        if self._vader is None:
+            return None
+        try:
+            scores = self._vader.polarity_scores(message)
+            return scores.get("compound", 0.0)
+        except Exception as e:
+            logger.warning("US-315: VADER scoring failed: %s", e)
+            return None
+
+    def process_message(self, message: str, role: str = "user") -> ConversationSignals:
+        """Process a single message and extract signals.
+
+        Args:
+            message: The message text
+            role: "user" or "assistant"
+
+        Returns:
+            ConversationSignals with extracted emotional data
+        """
+        # US-261: Input validation — reject empty, truncate oversized
+        if not message or not message.strip():
+            logger.debug("US-261: Empty/whitespace message — returning neutral signals")
+            return ConversationSignals(message_count=len(self._session_messages))
+
+        if len(message) > self.MAX_MESSAGE_LENGTH:
+            logger.warning("US-261: Message truncated from %d to %d chars", len(message), self.MAX_MESSAGE_LENGTH)
+            message = message[:self.MAX_MESSAGE_LENGTH]
+
+        self._session_messages.append({"role": role, "content": message, "timestamp": datetime.now(timezone.utc).isoformat()})
+
+        # US-261: Cap session messages (sliding window)
+        if len(self._session_messages) > self.MAX_SESSION_MESSAGES:
+            self._session_messages = self._session_messages[-self.MAX_SESSION_MESSAGES:]
+
+        if role != "user":
+            # Only analyze user messages for emotional signals
+            return ConversationSignals(message_count=len(self._session_messages))
+
+        message_lower = message.lower()
+        # US-280: Tokenize for negation + intensity analysis
+        tokens = re.findall(r"[a-z']+", message_lower)
+
+        # --- Keyword extraction with negation + intensity (US-280 + US-281) ---
+        stress_found, stress_intensity = self._extract_keywords_with_negation(
+            tokens, STRESS_KEYWORDS, message_lower
+        )
+        positive_found, positive_intensity = self._extract_keywords_with_negation(
+            tokens, POSITIVE_KEYWORDS, message_lower
+        )
+        fatigue_found_kw, fatigue_intensity = self._extract_keywords_with_negation(
+            tokens, FATIGUE_KEYWORDS, message_lower
+        )
+        fatigue_found = len(fatigue_found_kw) > 0
+        override_found = any(kw in message_lower for kw in TRADING_OVERRIDE_KEYWORDS)
+
+        # Detect stressors — US-204: use word-boundary regex to prevent
+        # false positives (e.g. "parent" matching inside "apartment")
+        stressors = []
+        for keyword, stressor in STRESSOR_KEYWORDS.items():
+            if re.search(r'\b' + re.escape(keyword) + r'\b', message_lower) and stressor not in stressors:
+                stressors.append(stressor)
+
+        # --- Sentiment computation (US-281: intensity-scaled) ---
+        stress_score = len(stress_found) * 0.15 * stress_intensity
+        positive_score = len(positive_found) * 0.12 * positive_intensity
+        fatigue_penalty = 0.15 * fatigue_intensity if fatigue_found else 0.0
+
+        raw_sentiment = 0.5 + positive_score - stress_score - fatigue_penalty
+        keyword_sentiment = max(0.0, min(1.0, raw_sentiment))
+
+        # US-315: Blend VADER compound score with keyword sentiment
+        vader_compound = self._compute_vader_sentiment(message)
+        if vader_compound is not None:
+            # Normalize compound (-1..+1) to (0..1) range
+            vader_normalized = (vader_compound + 1.0) / 2.0
+            # Blend: 60% VADER + 40% keyword (keyword as safety net)
+            sentiment = 0.6 * vader_normalized + 0.4 * keyword_sentiment
+            sentiment = max(0.0, min(1.0, sentiment))
+            logger.debug("US-315: VADER=%.3f keyword=%.3f blended=%.3f", vader_normalized, keyword_sentiment, sentiment)
+        else:
+            sentiment = keyword_sentiment
+
+        # US-281: Compute overall intensity score (0.0 to 1.0)
+        all_keywords = len(stress_found) + len(positive_found) + len(fatigue_found_kw)
+        if all_keywords > 0:
+            weighted_intensity = (
+                len(stress_found) * stress_intensity
+                + len(positive_found) * positive_intensity
+                + len(fatigue_found_kw) * fatigue_intensity
+            ) / all_keywords
+            # Normalize: 1.0 = neutral, scale to 0-1 range
+            intensity_score = max(0.0, min(1.0, weighted_intensity / AMPLIFIER_MULTIPLIER))
+        else:
+            intensity_score = 0.5  # Neutral default when no keywords found
+
+        # Update cumulative trackers
+        self._cumulative_stress += stress_score
+        self._cumulative_positive += positive_score
+
+        # --- Determine emotional state ---
+        if fatigue_found:
+            emotional_state = "fatigued"
+        elif stress_score > 0.3:
+            emotional_state = "stressed"
+        elif stress_score > 0.15:
+            emotional_state = "anxious"
+        elif positive_score > 0.3:
+            emotional_state = "energized"
+        elif positive_score > 0.15:
+            emotional_state = "calm"
+        else:
+            emotional_state = "neutral"
+
+        # --- Confidence trend ---
+        if sentiment > self._previous_sentiment + 0.1:
+            confidence_trend = "rising"
+        elif sentiment < self._previous_sentiment - 0.1:
+            confidence_trend = "falling"
+        else:
+            confidence_trend = "stable"
+        self._previous_sentiment = sentiment
+
+        # --- Build topics list ---
+        topics = []
+        if any(kw in message_lower for kw in ["trade", "trading", "buddy", "market", "forex", "fx"]):
+            topics.append("trading")
+        if any(kw in message_lower for kw in ["career", "job", "work", "promotion"]):
+            topics.append("career")
+        if any(kw in message_lower for kw in ["relationship", "partner", "family"]):
+            topics.append("relationships")
+        if any(kw in message_lower for kw in ["health", "sleep", "exercise", "sick"]):
+            topics.append("health")
+        if override_found:
+            topics.append("trading_override")
+
+        # --- US-293: Cognitive bias detection ---
+        bias_scores = self._bias_detector.detect_biases(message)
+
+        signals = ConversationSignals(
+            emotional_state=emotional_state,
+            stress_keywords_found=stress_found,
+            positive_keywords_found=positive_found,
+            detected_stressors=stressors,
+            fatigue_detected=fatigue_found,
+            override_mentioned=override_found,
+            sentiment_score=sentiment,
+            topics=topics,
+            confidence_trend=confidence_trend,
+            message_count=len(self._session_messages),
+            intensity_score=intensity_score,
+            bias_scores=bias_scores,
+        )
+
+        logger.debug(
+            "US-280/281/293: signals state=%s sentiment=%.2f intensity=%.2f biases=%s stressors=%s",
+            emotional_state, sentiment, intensity_score, bias_scores, stressors,
+        )
+
+        return signals
+
+    def estimate_cognitive_load(self, message: str) -> float:
+        """US-284: Estimate cognitive load from message structural complexity.
+
+        Analyzes message text for complexity indicators:
+        - Sentence count (more sentences = higher load)
+        - Question density (many questions = high cognitive demand)
+        - Conditional words (if/but/however = complex reasoning)
+        - Topic shift markers (also/another/besides = juggling multiple concerns)
+
+        Returns:
+            cognitive_load_score: 0.0 (minimal) to 1.0 (extreme complexity)
+        """
+        if not message or not message.strip():
+            return 0.1
+
+        message_lower = message.lower()
+        words = message_lower.split()
+        word_count = len(words)
+
+        if word_count == 0:
+            return 0.1
+
+        # 1. Sentence count (rough — split on sentence-ending punctuation)
+        sentences = re.split(r'[.!?]+', message.strip())
+        sentences = [s for s in sentences if s.strip()]
+        sentence_count = max(len(sentences), 1)
+
+        # 2. Question density
+        question_marks = message.count('?')
+        question_density = question_marks / max(sentence_count, 1)
+
+        # 3. Conditional/complex reasoning words
+        conditional_words = {"if", "but", "however", "although", "unless", "whereas",
+                             "while", "despite", "yet", "though", "otherwise", "either",
+                             "whether", "considering", "assuming", "given"}
+        conditional_count = sum(1 for w in words if w in conditional_words)
+
+        # 4. Topic shift markers
+        shift_words = {"also", "another", "besides", "additionally", "plus",
+                       "meanwhile", "separately", "furthermore", "moreover"}
+        shift_count = sum(1 for w in words if w in shift_words)
+
+        # 5. Message length factor (longer = more cognitive demand)
+        length_factor = min(1.0, word_count / 100.0)  # Caps at 100 words
+
+        # Combine indicators with weights
+        raw_score = (
+            0.20 * min(1.0, sentence_count / 6.0)      # 6+ sentences = max
+            + 0.25 * min(1.0, question_density)          # Questions per sentence
+            + 0.25 * min(1.0, conditional_count / 3.0)   # 3+ conditionals = max
+            + 0.15 * min(1.0, shift_count / 2.0)         # 2+ topic shifts = max
+            + 0.15 * length_factor                        # Message length
+        )
+
+        # Clamp to 0.1-0.95 (never fully 0 or fully 1)
+        return max(0.1, min(0.95, raw_score))
+
+    def get_session_summary(self) -> Dict[str, Any]:
+        """Get a summary of the current conversation session."""
+        return {
+            "message_count": len(self._session_messages),
+            "cumulative_stress": round(self._cumulative_stress, 3),
+            "cumulative_positive": round(self._cumulative_positive, 3),
+            "net_sentiment": round(self._cumulative_positive - self._cumulative_stress, 3),
+        }
+
+    def reset_session(self) -> None:
+        """Reset session state for a new conversation."""
+        self._session_messages = []
+        self._cumulative_stress = 0.0
+        self._cumulative_positive = 0.0
+        self._previous_sentiment = 0.5

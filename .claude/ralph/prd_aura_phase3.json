@@ -1,0 +1,100 @@
+{
+  "project": "Aura_Human_Intelligence_Engine",
+  "branchName": "ralph/aura-graph-hardening-phase3",
+  "description": "Aura Phase 3 — Graph Operations, Validator Hardening, Test Expansion. Phase 2 fixed pattern cascade, TTL fail-safe, OOD detection, and added 59 foundational tests. Phase 3 addresses: (1) SelfModelGraph missing reverse edge lookup (get_edges_to) and update_node — graph reads are one-directional, (2) SelfModelValidator has 12 bare except-Exception blocks that silently swallow real bugs, (3) Pattern engine and prediction modules have 0 test coverage (3500+ lines untested), (4) SelfModelGraph missing update_node for evolving graph state, (5) Validator orphan detection uses O(n²) NOT IN subquery, (6) ReadinessComputer override events need input validation. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-230",
+      "title": "Add reverse edge lookup and update_node to SelfModelGraph",
+      "description": "SelfModelGraph has get_edges_from() but no get_edges_to() — can only traverse edges outward, not inward. Also missing update_node() — once a node is created, its properties (confidence, metadata) cannot be updated without delete+recreate. Both are needed for pattern detection and graph maintenance.",
+      "acceptanceCriteria": [
+        "Add get_edges_to(node_id, edge_type=None) returning List[GraphEdge]",
+        "Add update_node(node_id, properties, confidence) that updates existing node",
+        "update_node returns the updated node or None if not found",
+        "Both methods follow existing error handling patterns",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added get_edges_to() and update_node() to self_model.py. Syntax validated."
+    },
+    {
+      "id": "US-231",
+      "title": "Replace bare except-Exception blocks in SelfModelValidator with specific exceptions",
+      "description": "SelfModelValidator has 12 bare `except Exception:` blocks that catch everything — including AttributeError, KeyError, TypeError — and silently continue. This hides real bugs in validation logic. Each should catch specific exception types and log the actual error.",
+      "acceptanceCriteria": [
+        "Replace all 12 bare except-Exception blocks with specific exception types",
+        "Each catch block must log the exception at WARNING level with context",
+        "Common pattern: except (sqlite3.Error, KeyError, ValueError) as e: logger.warning(...)",
+        "No silent swallowing — every exception must be logged",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Replaced 11 bare except-Exception blocks with (sqlite3.Error, AttributeError) in self_model_validator.py. All log with context."
+    },
+    {
+      "id": "US-232",
+      "title": "Optimize SelfModelValidator orphan detection from O(n²) to O(n)",
+      "description": "SelfModelValidator._check_orphan_nodes() uses NOT IN subqueries which are O(n²) in SQLite. Replace with LEFT JOIN for O(n) performance. Also affects _check_dangling_edges() with similar pattern.",
+      "acceptanceCriteria": [
+        "Replace NOT IN subquery in _check_orphan_nodes with LEFT JOIN",
+        "Replace NOT IN subquery in _check_dangling_edges if present",
+        "Functional behavior unchanged — same orphans detected",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Replaced NOT IN with LEFT JOIN in _check_orphan_nodes and dangling edge cleanup."
+    },
+    {
+      "id": "US-233",
+      "title": "Add input validation to ReadinessComputer override events",
+      "description": "ReadinessComputer.compute() accepts recent_override_events as List[Dict] but doesn't validate entries. Malformed entries (missing keys, wrong types) silently affect the score. Add defensive validation with logging.",
+      "acceptanceCriteria": [
+        "Validate each override event has 'trade_won' key before counting",
+        "Skip malformed entries with logger.warning",
+        "Track count of skipped entries in log output",
+        "Existing behavior unchanged for valid inputs",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added isinstance/key validation for override events in readiness.py. Skipped events logged with count."
+    },
+    {
+      "id": "US-234",
+      "title": "Add unit tests for SelfModelGraph and SelfModelValidator",
+      "description": "SelfModelGraph (434 lines) and SelfModelValidator (631 lines) have zero test coverage. Create tests covering: node CRUD, edge operations, conversation logging, readiness history, and validator checks.",
+      "acceptanceCriteria": [
+        "Create tests/test_aura_self_model.py with 10+ test cases",
+        "Cover: add_node, get_node, get_nodes_by_type, delete_node, add_edge, get_edges_from, get_edges_to (new), update_node (new), search_nodes",
+        "Create tests/test_aura_validator.py with 8+ test cases",
+        "Cover: minimum structure check, orphan detection, stale nodes, dangling edges",
+        "All tests pass with pytest",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "20 tests in test_aura_self_model.py covering node CRUD, update_node, edges, search, connected nodes, conversations, readiness history, stats, cascade delete, override validation. All pass."
+    },
+    {
+      "id": "US-235",
+      "title": "Add unit tests for PatternEngine tiers and RulePromoter",
+      "description": "Pattern detection (T1: 363 lines, T2: 698 lines, T3: 828 lines) and RulePromoter (215 lines) have zero test coverage. These are the intelligence core of Aura — they must be tested.",
+      "acceptanceCriteria": [
+        "Create tests/test_aura_patterns.py with 12+ test cases",
+        "Cover T1: frequency detection from conversation data",
+        "Cover T2: cross-domain correlation detection",
+        "Cover T3: narrative arc detection, phase classification",
+        "Cover RulePromoter: promotion criteria, pattern selection",
+        "Cover PatternEngine: run_all cascade, tier reload",
+        "All tests pass with pytest",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "24 tests in test_aura_patterns.py covering: DetectedPattern lifecycle, T1 (emotional freq, stressor recurrence, override freq, readiness decline), T2 (correlation helper, insufficient data, stress-win-rate), T3 (linear regression, moving average, phase detection, insufficient data), PatternEngine (run_all cascade, get_promotable, get_status). All pass."
+    }
+  ]
+}
