@@ -1,0 +1,113 @@
+{
+  "phase": 17,
+  "title": "Decision Quality Wiring, Cognitive Flexibility & Journal Reflection",
+  "codename": "aura_phase17_quality_flexibility",
+  "created": "2026-03-25",
+  "status": "complete",
+  "rationale": "Phase 16 added readability metrics, linguistic style drift, reliability scoring, graph topology, and negation-aware biases. Web research + codebase gap analysis reveals 3 critical gaps: (1) DecisionQualityScorer (US-321/US-328) computes an 8-dimension quality score but it is NEVER blended into the final readiness_score — it only appears in the signal for display. This is a Phase 14 feature that was never completed. (2) DecisionQualityScorer uses pure keyword matching (hardcoded word lists) with no semantic understanding — 'I carefully studied the chart' scores 0.0 on information_adequacy because 'studied' isn't in the keyword list. (3) No cognitive flexibility measurement — research (Frontiers Neuroscience 2024, Dajani & Uddin) shows belief-updating ability is one of the strongest predictors of trading success, distinct from but complementary to confirmation bias detection. Additionally: (4) AdaptiveWeightManager (US-302) requires 30+ samples to activate but most sessions never accumulate enough — it effectively never fires. (5) No journal reflection quality scoring — Harvard journaling research shows structured reflective writing quality predicts 22.8% performance improvement, and automated reflection assessment is feasible via causal language density + depth classification (British Journal Ed Tech 2025). Phase 17 focuses on completing the decision quality pipeline, measuring cognitive flexibility, and scoring journal reflection depth.",
+  "stories": [
+    {
+      "id": "US-338",
+      "title": "Wire decision quality score into readiness composite",
+      "description": "DecisionQualityScorer (US-321) computes an 8-dimension composite but the value is ONLY stored in ReadinessSignal.decision_quality_score for display — it never influences the actual readiness_score that Buddy reads. This means excellent decision process doesn't raise readiness and terrible decision process doesn't lower it. Wire decision_quality_score into the readiness computation at 7% weight (scale recovery from 8% to 6%, reduce v1_raw graph blend from 10% to 9% to make room). Apply as a post-V1/V2 blend like recovery_score. Also add a warning when decision quality < 30 but readiness > 70: 'high readiness with poor decision process — verify before trading'.",
+      "acceptance": [
+        "After decision_quality_score_val is computed (line ~1365), blend into readiness_score: readiness_score = 0.93 * readiness_score + 0.07 * decision_quality_score_val",
+        "Clamp result to [0, 100]",
+        "Recovery weight reduced from 8% to 6%: readiness_score = 0.94 * readiness_score + 0.06 * (recovery_score * 100)",
+        "Graph blend reduced from 10% to 9%: v1_raw = 0.91 * v1_raw + 0.09 * graph_context_score",
+        "Warning logged when decision_quality_score > 0 AND < 30 AND readiness_score > 70",
+        "State snapshot includes 'decision_quality_blended': True",
+        "At least 8 tests: DQ blend raises readiness when quality high, DQ blend lowers readiness when quality low, DQ=0 (no scorer) has no effect, DQ warning on high readiness + low quality, recovery weight change doesn't break existing recovery tests, graph weight change verified, DQ + recovery combined blend, clamping at boundaries"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-339",
+      "title": "Semantic decision quality signals replacing keyword matching",
+      "description": "DecisionQualityScorer (US-321) uses 8 hardcoded keyword lists where 'I carefully studied the chart' scores 0.0 on information_adequacy because 'studied' isn't in the keyword list, and 'I didn't check anything' still matches on 'check'. Replace keyword matching with 3 improvements: (1) Phrase pattern matching — use regex patterns that capture semantic intent ('check|review|analyz|stud|examin|look at|went through' for information gathering). (2) VADER sentiment on dimension-specific text — extract sentences mentioning each dimension, score their sentiment. (3) Negation awareness — reuse the _is_negated() pattern from US-336 to avoid 'I didn't check' scoring as information gathering. Keep existing keyword lists as fallback. Score = max(keyword_score, semantic_score) for backward compatibility.",
+      "acceptance": [
+        "DecisionQualityScorer gains _semantic_score_dimension(text, dimension_name) method",
+        "8 regex pattern sets: one per dimension (process_adherence, information_adequacy, metacognitive_awareness, uncertainty_acknowledgment, metacognitive_monitoring, rationale_clarity, emotional_regulation, cognitive_reflection)",
+        "Each regex set uses word stems and alternation (e.g., 'check|review|analyz|stud|examin|assess|evaluat|inspect')",
+        "Negation filter applied: if sentence containing match has negation within 3 tokens before, exclude it",
+        "Final dimension score = max(keyword_based_score, semantic_score) for backward compatibility",
+        "VADER applied to rationale_clarity: compound score > 0.3 on rationale sentences boosts clarity by 0.1",
+        "At least 8 tests: 'studied the chart' now scores > 0 on info_adequacy, 'didn't check' scores 0, negation works on all 8 dimensions, semantic scores higher than keyword for rich text, keyword fallback works on exact matches, backward compatible on existing test inputs, VADER boost on clear rationale, empty text safe"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-340",
+      "title": "Cognitive flexibility scorer: belief updating and strategy adaptation",
+      "description": "Cognitive flexibility — the ability to update beliefs when evidence contradicts them — is one of the strongest predictors of trading success (Dajani & Uddin 2015, Frontiers Neuroscience 2024). It's distinct from confirmation bias (which detects rigidity) by measuring the POSITIVE signal: does the trader actively revise their view? Implement CognitiveFlexibilityScorer with 3 metrics: (1) belief_update_language — detects phrases like 'changed my mind', 'I was wrong', 'updated my thesis', 'reconsidered', 'new information changed'. (2) strategy_adaptation_language — 'adjusted my approach', 'switching to', 'modified my plan', 'different strategy'. (3) evidence_acknowledgment — 'despite my expectation', 'contrary to what I thought', 'the data shows otherwise'. Composite flexibility score blended into readiness as a bonus (not penalty): high flexibility adds 3 to 5 points. Low flexibility with high confirmation bias triggers warning.",
+      "acceptance": [
+        "New class CognitiveFlexibilityScorer in src/aura/scoring/cognitive_flexibility.py",
+        "score(text) -> CognitiveFlexibilityResult with belief_update (0-1), strategy_adaptation (0-1), evidence_acknowledgment (0-1), composite (0-1)",
+        "Keyword/phrase lists for each metric (at least 8 phrases per metric)",
+        "Negation-aware: 'I didn't change my mind' does NOT score as flexibility",
+        "composite = 0.40 * belief_update + 0.35 * strategy_adaptation + 0.25 * evidence_acknowledgment",
+        "ReadinessComputer integrates: if composite > 0.3, apply flexibility_bonus = min(5.0, composite * 7.0)",
+        "Warning when flexibility < 0.1 AND confirmation_bias > 0.5: 'rigid thinking detected'",
+        "ConversationSignals gains cognitive_flexibility_score: float field (0-1)",
+        "At least 8 tests: belief update phrases detected, strategy adaptation detected, evidence acknowledgment detected, negated phrases excluded, composite weighting correct, flexibility bonus applied to readiness, warning on rigidity, empty text returns 0.0"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-341",
+      "title": "Bootstrap adaptive weights from outcome history + lower activation threshold",
+      "description": "AdaptiveWeightManager (US-302) uses Beta-Binomial conjugate priors to learn per-component importance from trade outcomes. However, is_ready() requires MIN_SAMPLES (30) which most sessions never reach — the adaptive system effectively never activates. Two fixes: (1) Lower MIN_SAMPLES from 30 to 10 to allow earlier learning. (2) Add bootstrap_from_history(outcomes: List[Dict]) method that replays past outcome signals to warm-start the priors. ReadinessComputer calls bootstrap on initialization if outcome_signal.json history is available. Add /weights CLI command showing current component weights (static vs adaptive) with visual bars.",
+      "acceptance": [
+        "AdaptiveWeightManager.MIN_SAMPLES changed from 30 to 10",
+        "New method bootstrap_from_history(outcomes: List[Dict]) replays outcome data through update()",
+        "Each outcome dict must have 'success' (bool) and 'component_scores' (Dict[str, float])",
+        "bootstrap_from_history validates input: skips entries with missing keys, logs count of valid vs skipped",
+        "ReadinessComputer.__init__() attempts to bootstrap from bridge outcome_signal.json if it exists",
+        "If bootstrap loads >= 10 outcomes, adaptive weights activate immediately",
+        "AuraCompanion handles /weights command: displays per-component weight (static and adaptive if active) with visual bars",
+        "At least 8 tests: bootstrap with 15 valid outcomes activates adaptive, bootstrap with 5 outcomes stays inactive, bootstrap skips malformed entries, MIN_SAMPLES=10 verified, /weights command output format, weight values sum to ~1.0, integration with compute() after bootstrap, empty history file handled safely"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-342",
+      "title": "Journal reflection quality scoring: depth, causal density, and pre-mortem presence",
+      "description": "Research (British Journal of Ed Tech 2025, Frontiers Psychology 2021) shows reflective writing quality predicts future decision quality. Implement JournalReflectionScorer with 3 metrics: (1) reflection_depth — classify text into 4 levels: L1=summary only ('took trade, lost'), L2=some reasoning ('thought it would breakout'), L3=causal analysis ('misjudged volatility because...'), L4=meta-reflection ('this pattern shows I overestimate edge in choppy markets'). Use causal language markers ('because', 'caused by', 'led to', 'as a result', 'due to') + meta-markers ('pattern shows', 'I notice', 'this tells me', 'lesson learned') for classification. (2) causal_density — count of explicit cause-effect statements / total sentences. (3) premortem_presence — did trader imagine failure before entering? ('if this fails', 'risk is', 'what could go wrong', 'worst case'). Feed reflection quality into decision_quality_score as a modulator: high reflection boosts DQ by up to 10%.",
+      "acceptance": [
+        "New class JournalReflectionScorer in src/aura/scoring/journal_reflection.py",
+        "score(text) -> JournalReflectionResult with depth_level (1-4), causal_density (0-1), premortem_present (bool), reflection_quality (0-1)",
+        "Depth classification: L1 if no reasoning markers, L2 if reasoning but no causal, L3 if causal markers present, L4 if meta-reflection markers present",
+        "causal_density = causal_statements / max(1, total_sentences)",
+        "premortem_present = any premortem phrase found in text",
+        "reflection_quality = 0.50 * (depth_level / 4.0) + 0.30 * causal_density + 0.20 * (1.0 if premortem_present else 0.0)",
+        "DecisionQualityScorer optionally receives reflection_quality and applies: composite *= (1.0 + 0.10 * reflection_quality) capped at 100",
+        "At least 8 tests: L1 text classified correctly, L4 text classified correctly, causal density computed, premortem detected, premortem absent, reflection modulates DQ score, empty text returns L1 with 0.0 quality, integration with decision quality composite"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-343",
+      "title": "Phase 17 integration tests + /flexibility and /journal CLI commands",
+      "description": "Write integration tests verifying the full Phase 17 pipeline: (1) Decision quality blended into readiness score. (2) Semantic scoring outperforms keyword-only on rich text. (3) Cognitive flexibility bonus applied to readiness. (4) Adaptive weights bootstrap from history. (5) Journal reflection quality modulates decision quality. Plus add /flexibility CLI command showing flexibility scores with belief/strategy/evidence breakdown. Add /journal CLI command showing reflection depth level, causal density, and premortem presence for last 5 messages.",
+      "acceptance": [
+        "At least 3 integration tests using real instances (no mocks on production code)",
+        "Test 1: Rich decision text with DQ score > 50 -> readiness increases by 3-5 points vs no DQ blend",
+        "Test 2: Text with 'changed my mind' + 'new data shows' -> flexibility > 0.3 -> readiness bonus applied",
+        "Test 3: Bootstrap 15 outcomes -> adaptive weights active -> compute() uses learned weights",
+        "Test 4: 'I misjudged because...' text -> reflection depth L3 -> DQ gets 10% boost",
+        "Test 5: Semantic scoring: 'carefully studied the chart' -> info_adequacy > 0.3 (keyword-only would give 0.0)",
+        "AuraCompanion handles /flexibility command: displays composite + 3 sub-scores with interpretation",
+        "AuraCompanion handles /journal command: displays depth level, causal density, premortem status for recent messages",
+        "All integration tests use NEUTRAL_CIRCADIAN to isolate from time-of-day effects",
+        "At least 8 tests total across integration + CLI scenarios"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

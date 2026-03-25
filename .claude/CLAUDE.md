@@ -78,5 +78,32 @@ Same pattern as Buddy but tracked here:
 5. **Record**: Update `state.json`, `learnings.md`, PRD pass status
 6. **Continue**: Plan next phase
 
+## Current State (Phase 19 complete)
+- **Phases 1-19**: Complete (affect dynamics, decision fatigue, adaptive thresholds, bias interactions)
+- **Phase 18 Bridge Intelligence**: Negotiation protocol, calibration loop, critique engine, co-evolution manager — all wired
+- **Mind**: LLM-powered via Ollama (gemma3:4b) in `src/aura/core/mind.py` — falls back to templates if Ollama unavailable
+- **Next**: Phase 20 planning (read `state.json` for context)
+- If you find gaps from earlier phases, write them as **phase N.1** (e.g., `prd_aura_phase19.1.json`)
+
+## Self-Improvement Loop (Autonomous)
+This loop runs WITHOUT human initiation. Each session:
+1. **Read** `state.json` → know what phase you're on, what's done, what's next
+2. **Explore** the codebase → run tests (`pytest tests/ -q`), identify gaps, check signal wiring
+3. **Research** (web search if needed) → find relevant techniques for identified gaps
+4. **PRD** → create `.claude/ralph/prd_aura_phaseN.json` with 6 user stories (US-XXX series, continuing from last)
+5. **Implement** each story → write code, syntax validate
+6. **Test** → run `pytest tests/ -v`, fix failures, zero regressions
+7. **Record** → update `state.json`, mark stories as passed, update test counts
+8. **Continue** → plan next phase or fix gaps
+
+### Rules
+- **NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.**
+- Run `pytest tests/ -q` FIRST to know current state before changing anything
+- Every new feature MUST have tests (8+ per story)
+- Never break existing tests — zero regressions policy
+- If a test was already failing before your changes, note it but don't count it as your regression
+- User stories continue incrementally (US-350, US-351, ... — check last used in latest PRD)
+- Keep mind.py (Ollama integration) working — test with a quick `think()` call if you modify it
+
 ## Operating Directive
 **NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.**

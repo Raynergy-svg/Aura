@@ -1,0 +1,125 @@
+{
+  "phase": 19,
+  "title": "Affect Dynamics, Decision Fatigue & Adaptive Thresholds",
+  "codename": "aura_phase19_affect_dynamics",
+  "created": "2026-03-25",
+  "status": "complete",
+  "rationale": "Phase 18 completed signal integration, emotional granularity, narrative coherence, and anomaly action pipeline. Web research (WELD 2025, Adams & MacKay 2024, Thompson sampling literature, Frontiers Psychology 2025) + codebase gap analysis reveals 6 critical improvement areas: (1) RECURRING anti-pattern: emotional_granularity_score and narrative_coherence_score are COMPUTED but not WIRED into readiness — exact same pattern found in Phases 12, 13, 14, 17, and 18. (2) Discrete emotion model limits readiness granularity — continuous valence-arousal with emotional inertia tracking (WELD 2025) captures dynamics that keyword-based detection misses. (3) Decision fatigue is measured only via override frequency (crude proxy) — a multi-signal composite incorporating decision frequency, holding periods, win rate degradation, and linguistic complexity shift is validated by neurobiology research (eNeuro 2024, JNeurosci 2025). (4) All 15+ thresholds in readiness.py are hardcoded — Thompson sampling contextual bandits can learn personalized thresholds per time-of-day context, as demonstrated in large-scale adaptive tutoring (2025). (5) Bias penalty treats all 9 biases as independent and equally weighted — behavioral finance shows certain combinations (confirmation+anchoring, sunk_cost+loss_aversion) multiply risk non-linearly. (6) Anomaly dampener and regime shift detector fire independently — need coordination so genuine regime shifts aren't dampened away.",
+  "stories": [
+    {
+      "id": "US-350",
+      "title": "Wire emotional granularity + narrative coherence into readiness score",
+      "description": "Phase 18 added emotional_granularity_score and narrative_coherence_score to ConversationSignals, but NEITHER feeds into ReadinessComputer.compute(). This is the SAME anti-pattern from Phases 12-18 (computed-but-unwired). Wire both: (1) ReadinessComputer.compute() gains granularity_score and coherence_score parameters. (2) Granularity modulates the existing emotional_state weight: high granularity (>0.6) adds up to +3 points (better self-awareness = safer trading). Low granularity (<0.3) combined with stress adds up to -3 penalty (can't articulate emotions under stress = risk). (3) Narrative coherence feeds into a stability bonus: coherence > 0.6 adds up to +2 points. Coherence < 0.3 triggers a warning and -2 penalty (inconsistent reasoning across sessions). (4) Add both to state_snapshot for observability.",
+      "acceptance": [
+        "ReadinessComputer.compute() gains optional parameters: granularity_score: float = 0.5, coherence_score: float = 0.5",
+        "Granularity bonus: if granularity_score > 0.6, readiness += min(3.0, (granularity_score - 0.6) * 7.5)",
+        "Granularity penalty: if granularity_score < 0.3 and stress detected (active_stressors > 0 or emotional_state in stressed states), readiness -= min(3.0, (0.3 - granularity_score) * 10.0)",
+        "Coherence bonus: if coherence_score > 0.6, readiness += min(2.0, (coherence_score - 0.6) * 5.0)",
+        "Coherence penalty: if coherence_score < 0.3, readiness -= min(2.0, (0.3 - coherence_score) * 6.67)",
+        "Warning logged when granularity < 0.3 under stress: 'low emotional granularity during stress — reduced self-awareness'",
+        "Warning logged when coherence < 0.3: 'low narrative coherence — inconsistent reasoning across sessions'",
+        "State snapshot gains: 'granularity_bonus_applied': float, 'coherence_bonus_applied': float",
+        "At least 8 tests: high granularity bonus, low granularity + stress penalty, low granularity + no stress = no penalty, high coherence bonus, low coherence penalty, combined granularity + coherence, state snapshot fields, default values no effect"
+      ],
+      "passes": true,
+      "notes": "8 tests passing. Granularity bonus/penalty and coherence bonus/penalty wired into compute()."
+    },
+    {
+      "id": "US-351",
+      "title": "Continuous valence-arousal affect tracking with emotional inertia",
+      "description": "Replace discrete emotional_state strings ('calm', 'stressed', 'anxious') with continuous valence-arousal 2D tracking. Research (WELD 2025, Russell's circumplex model) shows emotions exist on a continuous (valence: negative↔positive, arousal: low↔high) plane and exhibit temporal dynamics (inertia, volatility, transitions). Implement AffectDynamicsTracker: (1) Map each message to (valence, arousal) coordinates using VADER compound (→valence) and exclamation/caps/urgency markers (→arousal). (2) Track emotional inertia as lag-1 autocorrelation of valence. (3) Track emotional volatility as rolling std_dev of (valence, arousal) magnitudes. (4) Detect 'stuck' states (inertia > 0.8 for 5+ messages = emotional rigidity). (5) Export as ConversationSignals fields. High volatility (>0.6) should reduce readiness; high inertia in negative valence (>0.8 + valence < -0.3) should flag emotional stagnation.",
+      "acceptance": [
+        "New class AffectDynamicsTracker in src/aura/scoring/affect_dynamics.py",
+        "AffectDynamicsResult dataclass: valence (float, -1 to 1), arousal (float, 0 to 1), inertia (float, 0 to 1), volatility (float, 0 to 1), stuck_state (bool)",
+        "update(text: str) -> AffectDynamicsResult: maps text to (v, a) and computes temporal dynamics",
+        "Valence: VADER compound score (already available in ConversationProcessor)",
+        "Arousal: composite of exclamation_density * 0.4 + caps_ratio * 0.3 + question_density * 0.2 + urgency_keywords * 0.1",
+        "Inertia: Pearson correlation of valence_t vs valence_{t-1} over last 10 messages",
+        "Volatility: std_dev of sqrt(valence² + arousal²) over last 10 messages",
+        "Stuck state: inertia > 0.8 AND mean_valence < -0.3 for 5+ consecutive messages",
+        "ConversationSignals gains: affect_valence, affect_arousal, affect_inertia, affect_volatility (all float)",
+        "At least 8 tests: positive text = positive valence, excited text = high arousal, repeated negative = high inertia, varied emotions = high volatility, stuck state detection, default values on first message, empty text safe, volatility increases with diversity"
+      ],
+      "passes": true,
+      "notes": "8 tests passing. Russell circumplex model, inertia via Pearson autocorrelation, volatility via magnitude std_dev."
+    },
+    {
+      "id": "US-352",
+      "title": "Multi-signal decision fatigue index replacing override-only proxy",
+      "description": "Current decision fatigue detection (US-283) uses only override frequency as a proxy. Neurobiology research (eNeuro 2024, JNeurosci 2025) shows decision fatigue manifests across 6 measurable dimensions: decision frequency acceleration, holding period compression, win rate degradation, reward ratio tolerance decline, message sentiment variability increase, and linguistic complexity decline. Implement DecisionFatigueIndex as a 6-signal composite that reads from bridge outcome data (trade frequency, holding period, win rate) and conversation signals (sentiment variability, linguistic complexity). Score 0-100, where >70 triggers bridge warning to Buddy. This replaces the single override_frequency signal with a richer multi-factor fatigue model.",
+      "acceptance": [
+        "New class DecisionFatigueIndex in src/aura/scoring/decision_fatigue.py",
+        "DecisionFatigueResult dataclass: frequency_signal (0-1), patience_signal (0-1), quality_signal (0-1), reward_tolerance (0-1), emotional_variability (0-1), cognitive_decline (0-1), composite (0-100)",
+        "update(trade_history: List[Dict], sentiment_history: List[float], complexity_history: List[float]) -> DecisionFatigueResult",
+        "frequency_signal = (recent_trades_per_hour / baseline_trades_per_hour) clamped to [0, 1]",
+        "patience_signal = 1 - (recent_avg_holding / baseline_avg_holding) clamped to [0, 1]",
+        "quality_signal = 1 - recent_win_rate (recent 10 trades)",
+        "reward_tolerance = 1 - (recent_avg_rr / baseline_avg_rr) clamped to [0, 1]",
+        "emotional_variability = std_dev(recent_sentiments) / 0.5 clamped to [0, 1]",
+        "cognitive_decline = 1 - (recent_complexity / baseline_complexity) clamped to [0, 1]",
+        "composite = (0.25*frequency + 0.20*patience + 0.20*quality + 0.15*reward + 0.10*emotional + 0.10*cognitive) * 100",
+        "Baselines computed from first 20 entries (cold-start: neutral 0.5 defaults)",
+        "At least 8 tests: high frequency = high fatigue, short holding = high fatigue, low win rate = high fatigue, combined signals, cold start defaults, composite weighting, empty history safe, baseline calibration"
+      ],
+      "passes": true,
+      "notes": "8 tests passing. 6-signal composite with weighted formula, baseline calibration, cold-start defaults."
+    },
+    {
+      "id": "US-353",
+      "title": "Adaptive threshold learner via Thompson sampling contextual bandits",
+      "description": "All 15+ thresholds in readiness.py are hardcoded (style_drift > 0.4, reliability < 0.5, anomaly severity > 0.5, bias > 0.5, override risk > 0.7, tilt > 0.6, granularity < 0.3, coherence < 0.3, etc.). Research (contextual bandits 2025, adaptive tutoring at scale) shows personalized thresholds learned from outcomes dramatically outperform fixed ones. Implement AdaptiveThresholdLearner using Thompson sampling: (1) Discretize each threshold into 5 candidate values. (2) Track per-context (time-of-day: 4 periods) success rates via Beta-Binomial posteriors. (3) Sample thresholds from posterior at each compute() call. (4) Update posteriors from trade outcomes via bridge. (5) Persist state to JSON. (6) Graceful cold-start: use current hardcoded values as priors (alpha=5, beta=5 centered on current threshold).",
+      "acceptance": [
+        "New class AdaptiveThresholdLearner in src/aura/learning/adaptive_thresholds.py",
+        "Constructor takes thresholds_config: Dict[str, Dict] mapping threshold_name to {default, min, max, num_candidates}",
+        "Default config covers at least 6 thresholds: style_drift (0.4), reliability (0.5), anomaly_severity (0.5), bias_penalty (0.5), override_risk (0.7), tilt (0.6)",
+        "get_threshold(name: str, context: str) -> float: Thompson samples from Beta posterior",
+        "update(name: str, context: str, threshold_used: float, outcome: float): updates Beta counts",
+        "Context derived from hour: morning (6-12), afternoon (12-18), evening (18-24), night (0-6)",
+        "Persistence: save_state(path) / load_state(path) to JSON",
+        "Cold-start priors: alpha=5, beta=5 for candidate closest to default; alpha=2, beta=2 for others",
+        "MIN_SAMPLES = 20 before learned thresholds override defaults (safety gate)",
+        "At least 8 tests: cold start returns default, posterior updates shift threshold, context differentiation, persistence roundtrip, min samples gate, multiple thresholds independent, outcome 1.0 shifts toward threshold, outcome 0.0 shifts away"
+      ],
+      "passes": true,
+      "notes": "8 tests passing. Thompson sampling with Beta-Binomial posteriors, 4 time contexts, MIN_SAMPLES=20 safety gate."
+    },
+    {
+      "id": "US-354",
+      "title": "Bias interaction terms: multiplicative risk for dangerous bias pairs",
+      "description": "Current bias penalty (US-314) treats all 9 biases independently: each bias > 0.5 adds 3 points penalty (cap 25). But behavioral finance research shows bias combinations multiply risk: confirmation_bias + anchoring = locking onto wrong price level (multiplicative); sunk_cost + loss_aversion = paralysis on losing positions; overconfidence + hindsight_bias = inability to learn from losses. Implement BiasInteractionScorer that detects high-risk pairs and applies interaction multipliers. The interaction penalty adds ON TOP of the existing independent penalty, with a combined cap of 30 (raised from 25).",
+      "acceptance": [
+        "New class BiasInteractionScorer in src/aura/scoring/bias_interactions.py",
+        "DANGEROUS_PAIRS: Dict[Tuple[str, str], float] mapping bias pairs to risk multiplier (1.3-1.5)",
+        "At least 5 dangerous pairs: (confirmation, anchoring): 1.5, (sunk_cost, loss_aversion): 1.4, (overconfidence, hindsight): 1.3, (recency, anchoring): 1.3, (confirmation, overconfidence): 1.4",
+        "score(bias_scores: Dict[str, float]) -> BiasInteractionResult with interaction_pairs (list of active pairs), interaction_penalty (0-10), total_adjusted_penalty (float)",
+        "Interaction fires when BOTH biases in pair > 0.5: penalty = (bias_a * bias_b) * multiplier * 3.0",
+        "Sum of interaction penalties capped at 10 additional points",
+        "ReadinessComputer integrates: calls scorer, adds interaction_penalty to existing bias penalty, raises combined cap from 25 to 30",
+        "State snapshot gains: 'bias_interaction_pairs': List[str], 'bias_interaction_penalty': float",
+        "At least 8 tests: single dangerous pair fires, both biases must exceed 0.5, interaction penalty scales with bias magnitude, multiplier applied correctly, cap at 10 interaction points, no interaction when biases low, multiple pairs accumulate, state snapshot records pairs"
+      ],
+      "passes": true,
+      "notes": "8 tests passing. 5 dangerous pairs with multipliers, activation threshold 0.5, capped at 10 additional points."
+    },
+    {
+      "id": "US-355",
+      "title": "Phase 19 integration: anomaly-regime coordination, affect wiring, fatigue wiring + tests + CLI",
+      "description": "Integration story: (1) Coordinate anomaly dampener (US-346) with regime shift detector (US-330) — when both fire simultaneously, reduce dampening factor from 0.4 to 0.1 (regime shifts are real signals, not noise). (2) Wire AffectDynamicsTracker into readiness: high volatility (>0.6) applies -3 penalty, stuck negative state applies -5 penalty. (3) Wire DecisionFatigueIndex into readiness: fatigue > 70 applies -(fatigue-70)*0.2 penalty (max -6). (4) Add /affect CLI command showing valence, arousal, inertia, volatility with visual bars. (5) Add /fatigue CLI command showing 6 fatigue dimensions. (6) Write integration tests verifying cross-feature behavior.",
+      "acceptance": [
+        "Anomaly-regime coordination: in compute(), after anomaly detection, check if changepoint_detected in last 3 cycles; if so, reduce dampening_factor from severity*0.4 to severity*0.1",
+        "Log: 'US-355: Regime shift active — reduced anomaly dampening from X% to Y%'",
+        "Affect wiring: compute() gains affect_volatility: float = 0.0, affect_stuck: bool = False",
+        "If affect_volatility > 0.6: readiness -= min(3.0, (affect_volatility - 0.6) * 7.5)",
+        "If affect_stuck: readiness -= 5.0 (stuck in negative emotional state)",
+        "Fatigue wiring: compute() gains fatigue_score: float = 0.0",
+        "If fatigue_score > 70: readiness -= min(6.0, (fatigue_score - 70) * 0.2)",
+        "AuraCompanion handles /affect command: displays valence, arousal, inertia, volatility with bars and interpretation",
+        "AuraCompanion handles /fatigue command: displays 6 dimensions + composite with interpretation",
+        "State snapshot gains: 'affect_penalty_applied', 'fatigue_penalty_applied', 'regime_dampening_reduced'",
+        "At least 8 tests: anomaly+regime reduces dampening, affect volatility penalty, stuck state penalty, fatigue > 70 penalty, fatigue <= 70 no penalty, combined affect+fatigue+anomaly, /affect CLI output, /fatigue CLI output"
+      ],
+      "passes": true,
+      "notes": "12 tests passing. Anomaly-regime coordination, affect/fatigue wiring, /affect and /fatigue CLI commands."
+    }
+  ]
+}

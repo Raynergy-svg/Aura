@@ -144,6 +144,7 @@ class Tier1FrequencyDetector:
         conversations: List[Dict[str, Any]],
         readiness_history: List[Dict[str, Any]],
         override_events: List[Dict[str, Any]],
+        drift_warnings: Optional[List[Dict]] = None,
     ) -> List[DetectedPattern]:
         """Run all T1 frequency detections.
 
@@ -151,6 +152,7 @@ class Tier1FrequencyDetector:
             conversations: Recent conversation records from self-model DB
             readiness_history: Recent readiness score entries
             override_events: Recent override events from bridge
+            drift_warnings: Optional list of style drift warnings from ConversationProcessor (US-347)
 
         Returns:
             List of newly detected or updated patterns
@@ -161,6 +163,40 @@ class Tier1FrequencyDetector:
         new_patterns.extend(self._detect_stressor_recurrence(conversations))
         new_patterns.extend(self._detect_override_frequency(override_events))
         new_patterns.extend(self._detect_readiness_trends(readiness_history))
+
+        # US-347: Style drift early-warning patterns
+        if drift_warnings:
+            for warning in drift_warnings:
+                avg_drift = warning.get("avg_drift", 0.0)
+                count = warning.get("consecutive_count", 0)
+                confidence = min(1.0, avg_drift * 1.5)
+                pattern_key = f"style_drift_warning_{count}"
+                description = f"Linguistic style drift sustained ({count} messages)"
+
+                result = self._upsert_pattern(
+                    pattern_key=pattern_key,
+                    domain=PatternDomain.HUMAN,
+                    description=description,
+                    evidence=EvidenceItem(
+                        source_type="style_drift_detector",
+                        source_id=f"drift_warning_{count}",
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        summary=f"Linguistic style drift sustained ({count} consecutive messages)",
+                        data={
+                            "avg_drift": avg_drift,
+                            "max_drift": warning.get("max_drift", 0.0),
+                            "consecutive_count": count,
+                        },
+                    ),
+                    confidence=confidence,
+                    suggested_rule=(
+                        f"Style drift sustained at {avg_drift:.2%} intensity over {count} messages — "
+                        f"human communication pattern shifting"
+                    ),
+                )
+                new_patterns.extend(result)
+                logger.info("US-347: Style drift T1 pattern — count=%d, avg=%.3f, confidence=%.3f",
+                           count, avg_drift, confidence)
 
         # US-298: Auto-archive patterns whose evidence has decayed below threshold
         self._archive_decayed_patterns()

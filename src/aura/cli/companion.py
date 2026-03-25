@@ -52,6 +52,7 @@ YELLOW = "\033[93m"
 RED = "\033[91m"
 DIM = "\033[2m"
 BOLD = "\033[1m"
+MAGENTA = "\033[95m"
 RESET = "\033[0m"
 
 
@@ -309,12 +310,8 @@ class AuraCompanion:
             print(f"{DIM}Run /onboard to restart onboarding.{RESET}\n")
 
         print(f"\n{CYAN}{BOLD}╔══════════════════════════════════════════╗{RESET}")
-        print(f"{CYAN}{BOLD}║          AURA — Human Engine             ║{RESET}")
-        print(f"{CYAN}{BOLD}║   Recursive Self-Improving Companion     ║{RESET}")
+        print(f"{CYAN}{BOLD}║             AURA  ·  Eve                 ║{RESET}")
         print(f"{CYAN}{BOLD}╚══════════════════════════════════════════╝{RESET}")
-        print()
-        print(f"{DIM}Session: {self._conversation_id}{RESET}")
-        print(f"{DIM}Commands: /status /bridge /readiness /graph /patterns /validate /rules /predict /coach /insights /quality /anomalies /quit{RESET}")
         print()
 
         # Show bridge status if Buddy is running
@@ -376,19 +373,32 @@ class AuraCompanion:
         except Exception as e:
             logger.error("US-237: _log_to_graph failed: %s", e)
 
-        # Stage 4: Update readiness score
+        # Stage 3.5 (was Stage 5): GAP-004 fix — run pattern detection BEFORE readiness
+        # so that pattern signals can modulate the readiness score.
+        pattern_context: Optional[Dict[str, Any]] = None
         try:
-            readiness = self._update_readiness(signals)
+            pattern_context = self._run_pattern_detection(signals)
         except Exception as e:
-            logger.error("US-237: _update_readiness failed: %s", e)
-            readiness = self._latest_readiness  # Reuse last known score
+            logger.error("US-237: _run_pattern_detection failed: %s", e)
 
-        # Stage 4.5: US-308: Feed message context to readiness for tilt detection
+        # Stage 3.8: US-308: Feed message context to readiness for tilt detection
+        # Must run BEFORE compute() so tilt detector has current message data.
         try:
-            msg_context = [{"content": m.get("content", ""), "sentiment": m.get("sentiment", 0.5)} for m in self._message_history[-20:]]
+            # Include current user_input in context (it hasn't been appended to
+            # _message_history yet at this point in the pipeline)
+            current_msg = {"content": user_input, "sentiment": signals.sentiment_score if signals else 0.5}
+            msg_context = [{"content": m.get("content", ""), "sentiment": m.get("sentiment", 0.5)} for m in self._message_history[-19:]]
+            msg_context.append(current_msg)
             self.readiness.set_context(messages=msg_context, outcomes=self._outcome_cache)
         except Exception as e:
             logger.debug("US-308: Context setting failed: %s", e)
+
+        # Stage 4: Update readiness score (now receives pattern context + raw text)
+        try:
+            readiness = self._update_readiness(signals, pattern_context=pattern_context, message_text=user_input)
+        except Exception as e:
+            logger.error("US-237: _update_readiness failed: %s", e)
+            readiness = self._latest_readiness  # Reuse last known score
 
         # Stage 4.6: US-309: Check for new outcome signals and train adaptive weights
         try:
@@ -418,11 +428,15 @@ class AuraCompanion:
             except Exception as e:
                 logger.debug("US-311: Staleness check error: %s", e)
 
-        # Stage 5: Run T1 pattern detection after each message
+        # Stage 4.8: GAP-010 fix — enrich outcome signal with human context
         try:
-            self._run_pattern_detection(signals)
+            outcome_raw = self.bridge.read_outcome()
+            if outcome_raw is not None:
+                outcome_dict = outcome_raw.to_dict() if hasattr(outcome_raw, "to_dict") else outcome_raw
+                human_context = self.readiness.get_last_state_snapshot()
+                self.bridge.enrich_outcome_signal(outcome_dict, human_context)
         except Exception as e:
-            logger.error("US-237: _run_pattern_detection failed: %s", e)
+            logger.debug("GAP-010: Bridge enrichment failed (non-fatal): %s", e)
 
         # Stage 6: Generate response
         try:
@@ -452,11 +466,43 @@ class AuraCompanion:
         signals: ConversationSignals,
         readiness: ReadinessSignal,
     ) -> str:
-        """Generate Aura's response based on conversation signals.
+        """Generate Aura's response — LLM-powered with template fallback."""
+        # Try LLM-powered response first
+        try:
+            from src.aura.core.mind import think, build_context
 
-        Phase 1: Rule-based responses that demonstrate the value.
-        Phase 2: Phi-4 14B via MLX for deep, contextual responses.
-        """
+            outcome = self.bridge.read_outcome()
+            recent_overrides = self.bridge.get_recent_overrides(limit=10)
+
+            context = build_context(
+                readiness=readiness,
+                signals=signals,
+                active_stressors=self._active_stressors,
+                outcome=outcome,
+                recent_overrides=recent_overrides,
+                message_history=self._message_history,
+            )
+
+            response = think(
+                user_message=user_input,
+                context=context,
+                message_history=self._message_history,
+            )
+            if response:
+                return response
+        except Exception as e:
+            logger.debug("Mind unavailable, using template fallback: %s", e)
+
+        # Fallback: template-based responses (original Phase 1 logic)
+        return self._generate_template_response(user_input, signals, readiness)
+
+    def _generate_template_response(
+        self,
+        user_input: str,
+        signals: ConversationSignals,
+        readiness: ReadinessSignal,
+    ) -> str:
+        """Fallback template responses when LLM is unavailable."""
         parts: List[str] = []
 
         # Acknowledge emotional state if notable
@@ -562,8 +608,20 @@ class AuraCompanion:
 
         return "\n".join(parts)
 
-    def _update_readiness(self, signals: Optional[ConversationSignals] = None) -> ReadinessSignal:
-        """Recompute readiness score and write to bridge."""
+    def _update_readiness(
+        self,
+        signals: Optional[ConversationSignals] = None,
+        pattern_context: Optional[Dict[str, Any]] = None,
+        message_text: Optional[str] = None,
+    ) -> ReadinessSignal:
+        """Recompute readiness score and write to bridge.
+
+        Args:
+            signals: Conversation signals from the current message
+            pattern_context: GAP-004 fix — pattern detection output with
+                'stress_keywords' and 'confidence_trend_adjustment' keys
+            message_text: Raw user message for cognitive load / tilt analysis
+        """
         recent_overrides = self.bridge.get_recent_overrides(limit=20)
         override_events = [o.to_dict() for o in recent_overrides]
 
@@ -574,13 +632,47 @@ class AuraCompanion:
         week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         conv_count_7d = sum(1 for c in recent_convs if c.get("timestamp", "") >= week_ago)
 
+        # GAP-004 fix: Merge pattern-derived stress keywords into signal keywords
+        stress_keywords = list(signals.stress_keywords_found) if signals else []
+        if pattern_context and pattern_context.get("stress_keywords"):
+            stress_keywords.extend(pattern_context["stress_keywords"])
+
+        # GAP-004 fix: Modulate confidence trend based on pattern severity
+        confidence_trend = signals.confidence_trend if signals else "stable"
+        if pattern_context:
+            adjustment = pattern_context.get("confidence_trend_adjustment", 0.0)
+            if adjustment <= -0.2 and confidence_trend != "falling":
+                confidence_trend = "falling"
+                logger.info("GAP-004: Pattern severity overrode confidence_trend to 'falling'")
+
+        # Extract Phase 19 features from signals when available
+        bias_scores = signals.bias_scores if signals else None
+        style_drift_score = signals.style_drift_score if signals else 0.0
+        granularity_score = signals.emotional_granularity_score if signals else 0.5
+        coherence_score = signals.narrative_coherence_score if signals else 0.5
+        affect_volatility = signals.affect_volatility if signals else 0.0
+
+        # Derive affect_stuck: negative valence stuck with high inertia
+        affect_stuck = False
+        if signals and signals.affect_valence < -0.3 and signals.affect_inertia > 0.6:
+            affect_stuck = True
+            logger.info("Affect stuck detected: valence=%.3f, inertia=%.3f",
+                        signals.affect_valence, signals.affect_inertia)
+
         readiness = self.readiness.compute(
             emotional_state=signals.emotional_state if signals else "neutral",
-            stress_keywords=signals.stress_keywords_found if signals else [],
+            stress_keywords=stress_keywords,
             active_stressors=self._active_stressors,
             recent_override_events=override_events,
             conversation_count_7d=conv_count_7d + 1,  # +1 for current conversation
-            confidence_trend=signals.confidence_trend if signals else "stable",
+            confidence_trend=confidence_trend,
+            bias_scores=bias_scores,
+            message_text=message_text,
+            style_drift_score=style_drift_score,
+            granularity_score=granularity_score,
+            coherence_score=coherence_score,
+            affect_volatility=affect_volatility,
+            affect_stuck=affect_stuck,
         )
         self._latest_readiness = readiness
 
@@ -635,11 +727,19 @@ class AuraCompanion:
             )
             self.graph.add_node(stressor_node)
 
-    def _run_pattern_detection(self, signals: ConversationSignals) -> None:
+    def _run_pattern_detection(self, signals: ConversationSignals) -> Dict[str, Any]:
         """Run T1 pattern detection after each conversation message.
 
         T2 cross-domain runs less frequently — only every 5th message or via /patterns command.
+
+        Returns:
+            Dict with 'stress_keywords' (List[str]) and 'confidence_trend_adjustment' (float)
+            extracted from detected patterns, for feeding into readiness compute.
         """
+        pattern_context: Dict[str, Any] = {
+            "stress_keywords": [],
+            "confidence_trend_adjustment": 0.0,
+        }
         try:
             conversations = self.graph.get_recent_conversations(limit=20)
             readiness_history = self.graph.get_readiness_history(limit=20)
@@ -652,15 +752,40 @@ class AuraCompanion:
                     f"T1 detected {len(t1_patterns)} patterns after message "
                     f"#{signals.message_count}"
                 )
+                # GAP-004 fix: Extract high-severity pattern signals for readiness modulation
+                for p in t1_patterns:
+                    if p.confidence >= 0.6:
+                        # High-confidence stress/negative patterns add stress keywords
+                        desc_lower = p.description.lower()
+                        if any(kw in desc_lower for kw in (
+                            "stress", "anxiety", "frustration", "fatigue",
+                            "overwhelm", "fear", "anger", "loss", "tilt",
+                        )):
+                            pattern_context["stress_keywords"].append(
+                                f"pattern:{p.description[:50]}"
+                            )
+                        # Negative patterns push confidence trend downward
+                        if p.confidence >= 0.7:
+                            pattern_context["confidence_trend_adjustment"] -= 0.1
 
             # T2 runs every 5th message (moderate cost)
+            t2_patterns = []
             if signals.message_count % 5 == 0 and signals.message_count > 0:
                 t2_patterns = self.pattern_engine.run_t2(conversations, readiness_history)
                 if t2_patterns:
                     logger.info(f"T2 detected {len(t2_patterns)} cross-domain patterns")
+                    # GAP-004 fix: Cross-domain correlations with negative outcomes
+                    for p in t2_patterns:
+                        if p.correlation_strength is not None and p.correlation_strength < -0.3:
+                            pattern_context["stress_keywords"].append(
+                                f"t2_correlation:{p.description[:50]}"
+                            )
+                            pattern_context["confidence_trend_adjustment"] -= 0.15
 
         except Exception as e:
             logger.warning(f"Pattern detection failed (non-fatal): {e}")
+
+        return pattern_context
 
     def _handle_command(self, command: str) -> str:
         """Handle CLI commands."""
@@ -698,10 +823,32 @@ class AuraCompanion:
             return self._cmd_recovery()
         elif cmd.startswith("/regimes"):
             return self._cmd_regimes()
+        elif cmd.startswith("/reliability"):
+            return self._cmd_reliability()
+        elif cmd.startswith("/style"):
+            return self._cmd_style()
+        elif cmd.startswith("/flexibility"):
+            return self._cmd_flexibility()
+        elif cmd.startswith("/journal"):
+            return self._cmd_journal()
+        elif cmd.startswith("/weights"):
+            return self._cmd_weights()
+        elif cmd.startswith("/granularity"):
+            return self._cmd_granularity()
+        elif cmd.startswith("/coherence"):
+            return self._cmd_coherence()
+        elif cmd.startswith("/negotiate"):
+            return self._cmd_negotiate()
+        elif cmd.startswith("/calibration"):
+            return self._cmd_calibration()
+        elif cmd == "/affect":
+            return self._cmd_affect()
+        elif cmd == "/fatigue":
+            return self._cmd_fatigue()
         elif cmd == "/quit":
             return "__QUIT__"
         else:
-            return f"Unknown command: {cmd}. Available: /status /bridge /bridge-status /bridge-repair /readiness /graph /patterns /validate /rules /predict /coach /insights /quality /anomalies /recovery /regimes /quit"
+            return f"Unknown command: {cmd}. Available: /status /bridge /bridge-status /bridge-repair /readiness /graph /patterns /validate /rules /predict /coach /insights /quality /anomalies /recovery /regimes /reliability /style /flexibility /journal /weights /granularity /coherence /negotiate /calibration /affect /fatigue /quit"
 
     def _cmd_status(self) -> str:
         """Show current Aura status."""
@@ -1422,6 +1569,490 @@ class AuraCompanion:
             lines.append(f"{RED}Error loading regime shifts: {e}{RESET}")
 
         return "\n".join(lines)
+
+    def _cmd_reliability(self) -> str:
+        """US-337: Show readiness score reliability metrics."""
+        lines = [f"{BOLD}═══ Score Reliability ═══{RESET}"]
+
+        try:
+            from src.aura.analysis.reliability import ReadinessReliabilityAnalyzer
+
+            analyzer = ReadinessReliabilityAnalyzer()
+
+            # Try to reconstruct from readiness computer if available
+            rc = getattr(self, '_readiness_computer', None)
+            if rc is not None and hasattr(rc, '_reliability_analyzer'):
+                analyzer = rc._reliability_analyzer or analyzer
+
+            result = analyzer.compute()
+
+            if not result.sufficient_data:
+                lines.append(f"{DIM}Insufficient data — need 10+ readiness computations for reliability metrics.{RESET}")
+                lines.append(f"  Samples collected: {result.sample_count}")
+                return "\n".join(lines)
+
+            # Visual bars
+            def bar(val: float, width: int = 20) -> str:
+                filled = int(val * width)
+                return f"{'█' * filled}{'░' * (width - filled)}"
+
+            alpha = result.cronbachs_alpha
+            split_half = result.split_half_reliability
+            composite = result.reliability_score
+
+            alpha_color = GREEN if alpha >= 0.7 else (YELLOW if alpha >= 0.6 else RED)
+            split_color = GREEN if split_half >= 0.7 else (YELLOW if split_half >= 0.6 else RED)
+            comp_color = GREEN if composite >= 0.7 else (YELLOW if composite >= 0.6 else RED)
+
+            lines.extend([
+                f"  Cronbach's α:    {alpha_color}{bar(alpha)} {alpha:.3f}{RESET}",
+                f"  Split-half:      {split_color}{bar(split_half)} {split_half:.3f}{RESET}",
+                f"  Composite:       {comp_color}{bar(composite)} {composite:.3f}{RESET}",
+                f"  Samples:         {result.sample_count}",
+                "",
+            ])
+
+            if alpha < 0.6:
+                lines.append(f"  {RED}⚠ Low internal consistency — readiness components are noisy.{RESET}")
+            elif alpha >= 0.8:
+                lines.append(f"  {GREEN}✓ Excellent internal consistency — components agree well.{RESET}")
+            else:
+                lines.append(f"  {YELLOW}○ Acceptable consistency — monitor for degradation.{RESET}")
+
+        except ImportError:
+            lines.append(f"{RED}Reliability analyzer not available.{RESET}")
+        except Exception as e:
+            lines.append(f"{RED}Error computing reliability: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_style(self) -> str:
+        """US-337: Show recent linguistic style snapshots with drift indicator."""
+        lines = [f"{BOLD}═══ Linguistic Style ═══{RESET}"]
+
+        try:
+            # Access style tracker from conversation processor
+            tracker = getattr(self.processor, '_style_tracker', None)
+            if tracker is None:
+                return f"{DIM}Style tracker not available. Process some messages first.{RESET}"
+
+            snapshots = tracker._history
+            if not snapshots:
+                return f"{DIM}No style data yet. Send a few messages first.{RESET}"
+
+            # Show last 5 snapshots
+            recent = snapshots[-5:]
+            drift = tracker.compute_drift()
+
+            lines.append(f"  Drift score: ", )
+            drift_color = RED if drift > 0.5 else (YELLOW if drift > 0.3 else GREEN)
+            lines[-1] = f"  Drift score: {drift_color}{drift:.3f}{RESET}" + (" ⚠ HIGH" if drift > 0.5 else "")
+            lines.append("")
+
+            lines.append(f"  {'#':>3} {'AvgLen':>7} {'Excl!':>7} {'CAPS':>7} {'I-pron':>7} {'Quest?':>7}")
+            lines.append(f"  {'─'*3} {'─'*7} {'─'*7} {'─'*7} {'─'*7} {'─'*7}")
+
+            for i, snap in enumerate(recent):
+                idx = len(snapshots) - len(recent) + i + 1
+                lines.append(
+                    f"  {idx:>3} {snap.avg_sentence_length:>7.1f} {snap.exclamation_density:>7.3f} "
+                    f"{snap.caps_ratio:>7.3f} {snap.pronoun_i_ratio:>7.3f} {snap.question_ratio:>7.3f}"
+                )
+
+            if drift > 0.5:
+                lines.append(f"\n  {RED}⚠ Significant style drift detected — potential state change.{RESET}")
+            elif drift > 0.3:
+                lines.append(f"\n  {YELLOW}○ Moderate style drift — monitor for escalation.{RESET}")
+            else:
+                lines.append(f"\n  {GREEN}✓ Stable writing style.{RESET}")
+
+        except Exception as e:
+            lines.append(f"{RED}Error loading style data: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_flexibility(self) -> str:
+        """US-343: Show cognitive flexibility scores."""
+        lines = [f"{BOLD}═══ Cognitive Flexibility ═══{RESET}"]
+
+        try:
+            scorer = None
+            # Try to get scorer from readiness computer or create one
+            rc = getattr(self, '_readiness_computer', None)
+            if rc is not None:
+                scorer = getattr(rc, '_flexibility_scorer', None)
+            if scorer is None:
+                try:
+                    from src.aura.scoring.cognitive_flexibility import CognitiveFlexibilityScorer
+                    scorer = CognitiveFlexibilityScorer()
+                except ImportError:
+                    return f"{DIM}Cognitive flexibility scorer not available.{RESET}"
+
+            # Score from recent messages
+            recent_text = " ".join(
+                m.get("content", "") for m in self._message_history[-5:]
+            )
+            if not recent_text.strip():
+                return f"{DIM}No recent messages to analyze. Send some messages first.{RESET}"
+
+            result = scorer.score(recent_text)
+
+            def bar(val, width=20):
+                filled = int(val * width)
+                return f"[{'█' * filled}{'░' * (width - filled)}]"
+
+            color_comp = GREEN if result.composite > 0.3 else (YELLOW if result.composite > 0.1 else RED)
+            lines.append(f"  Composite: {color_comp}{result.composite:.3f}{RESET} {bar(result.composite)}")
+            lines.append(f"  Belief Update:     {result.belief_update:.3f} {bar(result.belief_update)}")
+            lines.append(f"  Strategy Adapt:    {result.strategy_adaptation:.3f} {bar(result.strategy_adaptation)}")
+            lines.append(f"  Evidence Ack:      {result.evidence_acknowledgment:.3f} {bar(result.evidence_acknowledgment)}")
+            lines.append("")
+
+            if result.composite > 0.5:
+                lines.append(f"  {GREEN}✓ High flexibility — actively updating beliefs and adapting.{RESET}")
+            elif result.composite > 0.3:
+                lines.append(f"  {GREEN}○ Good flexibility — showing adaptive thinking.{RESET}")
+            elif result.composite > 0.1:
+                lines.append(f"  {YELLOW}○ Low flexibility — consider reviewing assumptions.{RESET}")
+            else:
+                lines.append(f"  {RED}⚠ Rigid thinking detected — risk of confirmation bias.{RESET}")
+
+        except Exception as e:
+            lines.append(f"{RED}Error: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_journal(self) -> str:
+        """US-343: Show journal reflection quality for recent messages."""
+        lines = [f"{BOLD}═══ Journal Reflection Quality ═══{RESET}"]
+
+        try:
+            try:
+                from src.aura.scoring.journal_reflection import JournalReflectionScorer
+                scorer = JournalReflectionScorer()
+            except ImportError:
+                return f"{DIM}Journal reflection scorer not available.{RESET}"
+
+            recent = self._message_history[-5:]
+            if not recent:
+                return f"{DIM}No recent messages to analyze.{RESET}"
+
+            depth_labels = {1: "L1 Summary", 2: "L2 Reasoning", 3: "L3 Causal", 4: "L4 Meta-Reflection"}
+
+            for i, msg in enumerate(recent):
+                text = msg.get("content", "")
+                if not text.strip():
+                    continue
+                result = scorer.score(text)
+                depth_color = GREEN if result.depth_level >= 3 else (YELLOW if result.depth_level >= 2 else RED)
+                premortem_icon = f"{GREEN}✓{RESET}" if result.premortem_present else f"{DIM}✗{RESET}"
+
+                idx = len(self._message_history) - len(recent) + i + 1
+                lines.append(f"  #{idx}: {depth_color}{depth_labels.get(result.depth_level, 'L1')}{RESET}")
+                lines.append(f"       Causal density: {result.causal_density:.3f}  Pre-mortem: {premortem_icon}")
+                lines.append(f"       Quality: {result.reflection_quality:.3f}")
+
+            lines.append("")
+            avg_quality = 0.0
+            count = 0
+            for msg in recent:
+                text = msg.get("content", "")
+                if text.strip():
+                    r = scorer.score(text)
+                    avg_quality += r.reflection_quality
+                    count += 1
+            if count > 0:
+                avg_quality /= count
+                qcolor = GREEN if avg_quality > 0.5 else (YELLOW if avg_quality > 0.3 else RED)
+                lines.append(f"  Average quality: {qcolor}{avg_quality:.3f}{RESET}")
+
+        except Exception as e:
+            lines.append(f"{RED}Error: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_weights(self) -> str:
+        """US-341: Show current readiness component weights (static vs adaptive)."""
+        lines = [f"{BOLD}═══ Component Weights ═══{RESET}"]
+
+        try:
+            from src.aura.core.readiness import _COMPONENT_WEIGHTS
+
+            rc = getattr(self, '_readiness_computer', None)
+            adaptive_mgr = None
+            if rc is not None:
+                adaptive_mgr = getattr(rc, '_adaptive_weights', None)
+
+            adaptive_active = adaptive_mgr is not None and adaptive_mgr.is_ready()
+            adaptive_weights = adaptive_mgr.get_weights() if adaptive_active else None
+
+            def bar(val, width=20):
+                filled = int(val * width)
+                return f"[{'█' * filled}{'░' * (width - filled)}]"
+
+            lines.append(f"  {'Component':<22} {'Static':>8} {'Adaptive':>8} {'Active':>8}")
+            lines.append(f"  {'─'*22} {'─'*8} {'─'*8} {'─'*8}")
+
+            for name, static_w in _COMPONENT_WEIGHTS.items():
+                adap_w = adaptive_weights.get(name, 0.0) if adaptive_weights else 0.0
+                active_w = adap_w if adaptive_active else static_w
+                color = GREEN if adaptive_active else DIM
+                lines.append(
+                    f"  {name:<22} {static_w:>8.3f} {adap_w:>8.3f} {color}{active_w:>8.3f}{RESET} {bar(active_w)}"
+                )
+
+            lines.append("")
+            if adaptive_active:
+                lines.append(f"  {GREEN}✓ Adaptive weights active (samples={adaptive_mgr.sample_count}){RESET}")
+            else:
+                sample_count = adaptive_mgr.sample_count if adaptive_mgr else 0
+                needed = (adaptive_mgr.MIN_SAMPLES if adaptive_mgr else 10) - sample_count
+                lines.append(f"  {YELLOW}○ Using static weights (need {max(0, needed)} more outcomes for adaptive){RESET}")
+
+        except Exception as e:
+            lines.append(f"{RED}Error: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_granularity(self) -> str:
+        """US-349: Show emotional granularity metrics."""
+        lines = [f"{BOLD}═══ Emotional Granularity ═══{RESET}"]
+
+        def bar(val, width=20):
+            filled = int(val * width)
+            return f"[{'█' * filled}{'░' * (width - filled)}]"
+
+        try:
+            from src.aura.scoring.emotional_granularity import EmotionalGranularityScorer
+
+            if not hasattr(self, '_granularity_scorer'):
+                self._granularity_scorer = EmotionalGranularityScorer()
+
+            # Use processor's scorer if available
+            scorer = getattr(self.processor, '_granularity_scorer', self._granularity_scorer)
+            if scorer and hasattr(scorer, '_word_history') and len(scorer._word_history) > 0:
+                # Reconstruct last result from history
+                result = scorer.update("")  # Get current state without new text
+                lines.append(f"  Vocabulary Richness: {bar(result.vocabulary_richness)} {result.vocabulary_richness:.3f}")
+                lines.append(f"  Entropy:             {bar(result.entropy)} {result.entropy:.3f}")
+                lines.append(f"  Differentiation:     {bar(result.differentiation)} {result.differentiation:.3f}")
+                lines.append(f"  {BOLD}Composite:           {bar(result.composite)} {result.composite:.3f}{RESET}")
+                lines.append("")
+                if result.composite > 0.6:
+                    lines.append(f"  {GREEN}High granularity — nuanced emotional expression{RESET}")
+                elif result.composite > 0.3:
+                    lines.append(f"  {YELLOW}Moderate granularity — room for more precise emotion labels{RESET}")
+                else:
+                    lines.append(f"  {RED}Low granularity — limited emotion vocabulary{RESET}")
+            else:
+                lines.append(f"  {DIM}No emotional data yet. Express emotions in your messages to track granularity.{RESET}")
+        except Exception as e:
+            lines.append(f"  {DIM}Granularity scoring unavailable: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_coherence(self) -> str:
+        """US-349: Show narrative coherence metrics."""
+        lines = [f"{BOLD}═══ Narrative Coherence ═══{RESET}"]
+
+        def bar(val, width=20):
+            filled = int(val * width)
+            return f"[{'█' * filled}{'░' * (width - filled)}]"
+
+        try:
+            from src.aura.scoring.narrative_coherence import NarrativeCoherenceTracker
+
+            if not hasattr(self, '_coherence_tracker'):
+                self._coherence_tracker = NarrativeCoherenceTracker()
+
+            tracker = self._coherence_tracker
+            if len(tracker._session_words) >= 2:
+                # Show metrics from most recent update
+                lines.append(f"  Sessions tracked: {len(tracker._session_words)}")
+                lines.append(f"  Lexical Overlap:       {bar(0.5)} (session-level metric)")
+                lines.append(f"  Sentiment Consistency: {bar(0.5)} (session-level metric)")
+                lines.append(f"  Strategy Persistence:  {bar(0.5)} (session-level metric)")
+                lines.append("")
+                lines.append(f"  {DIM}Coherence is computed across sessions — more data improves accuracy.{RESET}")
+            else:
+                lines.append(f"  {DIM}Need at least 2 sessions to compute coherence. Current: {len(tracker._session_words)} session(s).{RESET}")
+        except Exception as e:
+            lines.append(f"  {DIM}Coherence tracking unavailable: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_negotiate(self) -> str:
+        """US-349: Show active proposals and negotiation history."""
+        lines = [f"{BOLD}═══ Negotiation Status ═══{RESET}"]
+
+        try:
+            from src.aura.bridge.negotiation import NegotiationEngine
+
+            bridge_dir = getattr(self, '_bridge_dir', None)
+            if bridge_dir is None:
+                from pathlib import Path
+                bridge_dir = Path(".aura/bridge")
+
+            engine = NegotiationEngine(bridge_dir)
+            entries = engine.get_log_entries(limit=10)
+
+            if not entries:
+                lines.append(f"  {DIM}No negotiation activity yet.{RESET}")
+            else:
+                proposals = [e for e in entries if e.get("type") == "proposal"]
+                counters = [e for e in entries if e.get("type") == "counter_proposal"]
+                resolutions = [e for e in entries if e.get("type") == "resolution"]
+
+                # Stats
+                auto_activated = sum(1 for r in resolutions if r.get("resolution_type") == "auto_activated")
+                converged = sum(1 for r in resolutions if r.get("resolution_type") == "converged")
+                total_resolved = len(resolutions)
+                convergence_rate = converged / max(1, total_resolved) * 100
+
+                lines.append(f"  Proposals:  {len(proposals)}")
+                lines.append(f"  Counters:   {len(counters)}")
+                lines.append(f"  Resolved:   {total_resolved}")
+                lines.append(f"  Convergence rate: {convergence_rate:.0f}% ({converged} converged, {auto_activated} auto-activated)")
+                lines.append("")
+
+                # Last 5 resolutions
+                lines.append(f"  {BOLD}Recent Resolutions:{RESET}")
+                for r in resolutions[-5:]:
+                    rtype = r.get("resolution_type", "?")
+                    value = r.get("agreed_value", 0)
+                    color = GREEN if rtype == "converged" else (YELLOW if rtype == "auto_activated" else RED)
+                    lines.append(f"    {color}{rtype:<16}{RESET} → {value:.4f}")
+
+        except Exception as e:
+            lines.append(f"{RED}Error: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_calibration(self) -> str:
+        """US-349: Show calibration scores, weight recommendations, and critiques."""
+        lines = [f"{BOLD}═══ Calibration & Co-Evolution ═══{RESET}"]
+
+        def bar(val, width=20):
+            filled = int(val * width)
+            return f"[{'█' * filled}{'░' * (width - filled)}]"
+
+        try:
+            from src.aura.bridge.calibration import CalibrationTracker
+            from src.aura.bridge.coevolution import CoEvolutionManager
+            from src.aura.bridge.critique import CritiqueEngine
+
+            bridge_dir = getattr(self, '_bridge_dir', None)
+            if bridge_dir is None:
+                from pathlib import Path
+                bridge_dir = Path(".aura/bridge")
+
+            # Calibration
+            tracker = CalibrationTracker()
+            tracker.load_state(bridge_dir)
+            aura_cal = tracker.aura_calibration_score()
+            buddy_cal = tracker.buddy_calibration_score()
+
+            aura_color = GREEN if aura_cal >= 0.7 else (YELLOW if aura_cal >= 0.5 else RED)
+            buddy_color = GREEN if buddy_cal >= 0.7 else (YELLOW if buddy_cal >= 0.5 else RED)
+
+            lines.append(f"  {BOLD}Prediction Accuracy:{RESET}")
+            lines.append(f"    Aura:  {aura_color}{aura_cal:.1%}{RESET} {bar(aura_cal)} ({len(tracker.aura_predictions)} samples)")
+            lines.append(f"    Buddy: {buddy_color}{buddy_cal:.1%}{RESET} {bar(buddy_cal)} ({len(tracker.buddy_predictions)} samples)")
+            if tracker.is_low_calibration():
+                lines.append(f"    {RED}⚠ LOW CALIBRATION — Buddy should discount readiness score{RESET}")
+            lines.append("")
+
+            # Co-evolution weights
+            mgr = CoEvolutionManager()
+            # Try to load persisted state
+            from src.aura.bridge.signals import FeedbackBridge
+            import json
+            raw = FeedbackBridge._locked_read(bridge_dir / "calibration_state.json")
+            if raw:
+                try:
+                    state = json.loads(raw)
+                    coevo = state.get("coevolution", {})
+                    if coevo:
+                        mgr.load_from_dict(coevo)
+                except Exception:
+                    pass
+
+            lines.append(f"  {BOLD}Weight Recommendations:{RESET}")
+            lines.append(f"    Aura outcome weight:     {mgr.aura_outcome_weight:.3f} {bar(mgr.aura_outcome_weight / 1.5)}")
+            lines.append(f"    Signal weight recommend:  {mgr.signal_weight_recommendation:.3f} {bar(mgr.signal_weight_recommendation / 1.5)}")
+            lines.append("")
+
+            # Recent critiques
+            critique_engine = CritiqueEngine(bridge_dir)
+            aura_critiques = critique_engine.get_recent_critiques(critic="aura", limit=3)
+            buddy_critiques = critique_engine.get_recent_critiques(critic="buddy", limit=3)
+
+            lines.append(f"  {BOLD}Recent Critiques:{RESET}")
+            if not aura_critiques and not buddy_critiques:
+                lines.append(f"    {DIM}No critiques yet.{RESET}")
+            for c in aura_critiques:
+                lines.append(f"    {CYAN}Aura→Buddy:{RESET} {c.observation[:60]}...")
+            for c in buddy_critiques:
+                lines.append(f"    {MAGENTA}Buddy→Aura:{RESET} {c.observation[:60]}...")
+
+            # Weight history
+            if mgr.weight_history:
+                lines.append("")
+                lines.append(f"  {BOLD}Weight Changes (last 5):{RESET}")
+                for w in mgr.weight_history[-5:]:
+                    lines.append(f"    {w.parameter}: {w.old_value:.3f} → {w.new_value:.3f} ({w.trigger})")
+
+        except Exception as e:
+            lines.append(f"{RED}Error: {e}{RESET}")
+
+        return "\n".join(lines)
+
+    def _cmd_affect(self) -> str:
+        """US-355: Show current affect dynamics."""
+        try:
+            tracker = getattr(self._processor, '_affect_tracker', None)
+            if tracker is None or not tracker._valence_history:
+                return "No affect data yet. Send some messages first."
+
+            v = tracker._valence_history[-1] if tracker._valence_history else 0.0
+            a = tracker._arousal_history[-1] if tracker._arousal_history else 0.0
+            inertia = tracker._compute_inertia()
+
+            # Use last result if available
+            lines = [
+                "━━━ Affect Dynamics ━━━",
+                f"  Valence:    {'█' * int(abs(v) * 10):10s} {v:+.2f} ({'positive' if v > 0.1 else 'negative' if v < -0.1 else 'neutral'})",
+                f"  Arousal:    {'█' * int(a * 10):10s} {a:.2f} ({'high' if a > 0.5 else 'low'})",
+                f"  Inertia:    {'█' * int(inertia * 10):10s} {inertia:.2f} ({'rigid' if inertia > 0.7 else 'flexible'})",
+                f"  History:    {len(tracker._valence_history)} messages tracked",
+            ]
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Affect tracking unavailable: {e}"
+
+    def _cmd_fatigue(self) -> str:
+        """US-355: Show decision fatigue dimensions."""
+        try:
+            if not self._latest_readiness:
+                return "No readiness signal computed yet. Send some messages first."
+
+            fatigue_score = self._latest_readiness.fatigue_score
+
+            lines = [
+                "━━━ Decision Fatigue ━━━",
+                f"  Overall:    {'█' * int(fatigue_score * 10):10s} {fatigue_score:.1f}/100",
+            ]
+
+            if fatigue_score > 70:
+                lines.append(f"  {RED}Status: HIGH FATIGUE — Recommend breaks{RESET}")
+            elif fatigue_score > 50:
+                lines.append(f"  {YELLOW}Status: MODERATE FATIGUE — Monitor closely{RESET}")
+            else:
+                lines.append(f"  {GREEN}Status: NORMAL — Full capacity{RESET}")
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Fatigue tracking unavailable: {e}"
 
     def end_session(self) -> None:
         """Clean up and log session summary to graph."""

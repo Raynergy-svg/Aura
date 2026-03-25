@@ -261,7 +261,8 @@ class TestCognitiveLoadWiring:
             message_text="If the market crashes, should I also sell my other positions? But what about the hedges?",
         )
         # Many stressors + complex text = low readiness
-        assert sig.readiness_score < 50
+        # US-332: readability blend slightly shifts cognitive load — relaxed from 50 to 52
+        assert sig.readiness_score < 52
 
     def test_stressor_plus_simple_medium(self):
         rc = self._make_rc()

@@ -18,6 +18,7 @@ Dimensions (from behavioral economics research — Steenbarger, Douglas, metacog
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -130,6 +131,41 @@ class DecisionQualityScorer:
         "watched", "observed", "took a step back", "slept on it",
     ]
 
+    # --- US-339: Semantic regex pattern sets (word stems + alternation) ---
+    SEMANTIC_PATTERNS = {
+        "process_adherence": re.compile(
+            r'\b(follow|adher|checklist|rule|plan|system|criteria|protocol|routine|procedure)\w*\b', re.IGNORECASE
+        ),
+        "information_adequacy": re.compile(
+            r'\b(check|review|analyz|stud|examin|assess|evaluat|inspect|research|look\s+at|went\s+through|investigat)\w*\b', re.IGNORECASE
+        ),
+        "metacognitive_awareness": re.compile(
+            r'\b(aware|recogniz|notic|realiz|acknowledge|conscious|mindful|self-aware|introspect)\w*\b', re.IGNORECASE
+        ),
+        "uncertainty_acknowledgment": re.compile(
+            r'\b(uncertain|unsure|risk|probability|might|could|perhaps|possible|chance|odds|likelihood)\w*\b', re.IGNORECASE
+        ),
+        "metacognitive_monitoring": re.compile(
+            r'\b(calibrat|confiden|accuracy|reliab|track\s+record|hit\s+rate|success\s+rate)\w*\b', re.IGNORECASE
+        ),
+        "rationale_clarity": re.compile(
+            r'\b(because|reason|since|therefore|thus|rationale|logic|basis|ground|justif)\w*\b', re.IGNORECASE
+        ),
+        "emotional_regulation": re.compile(
+            r'\b(calm|patient|disciplin|composed|controlled|measured|steady|level-headed)\w*\b', re.IGNORECASE
+        ),
+        "cognitive_reflection": re.compile(
+            r'\b(paus|wait|reflect|reconsider|step\s+back|sleep\s+on|think\s+twice|deliberat)\w*\b', re.IGNORECASE
+        ),
+    }
+
+    # Negation words for semantic scoring (from US-336 pattern)
+    NEGATION_WORDS = frozenset({
+        "not", "no", "never", "don't", "didn't", "isn't", "won't",
+        "can't", "haven't", "shouldn't", "neither", "nor", "without",
+        "doesn't", "wasn't", "weren't", "wouldn't", "couldn't",
+    })
+
     def __init__(self, min_trades_for_trend: int = 3):
         """Initialize scorer.
 
@@ -138,6 +174,58 @@ class DecisionQualityScorer:
         """
         self.min_trades_for_trend = min_trades_for_trend
         self.trade_history: List[DecisionQualityScore] = []
+        # US-339: VADER for rationale sentiment boost
+        self._vader = None
+        try:
+            from nltk.sentiment.vader import SentimentIntensityAnalyzer
+            self._vader = SentimentIntensityAnalyzer()
+        except (ImportError, LookupError):
+            pass
+
+    def _is_negated_at(self, text: str, match_start: int) -> bool:
+        """US-339: Check if a regex match at position is negated (negation within 3 tokens before)."""
+        prefix = text[:match_start].strip()
+        tokens = prefix.split()
+        check_tokens = tokens[-3:] if len(tokens) >= 3 else tokens
+        return any(t.strip(",.!?;:").lower() in self.NEGATION_WORDS for t in check_tokens)
+
+    def _semantic_score_dimension(self, text: str, dimension_name: str) -> float:
+        """US-339: Score a dimension using regex pattern matching with negation awareness.
+
+        Args:
+            text: Full conversation text
+            dimension_name: One of the 8 dimension names
+
+        Returns:
+            Semantic score 0-1 for this dimension
+        """
+        pattern = self.SEMANTIC_PATTERNS.get(dimension_name)
+        if pattern is None:
+            return 0.0
+
+        matches = list(pattern.finditer(text))
+        # Filter out negated matches
+        non_negated = [m for m in matches if not self._is_negated_at(text, m.start())]
+        count = len(non_negated)
+
+        # Normalize: 2+ matches = 1.0, 1 match = 0.5
+        if count >= 2:
+            score = 1.0
+        elif count == 1:
+            score = 0.5
+        else:
+            score = 0.0
+
+        # US-339: VADER boost for rationale_clarity
+        if dimension_name == "rationale_clarity" and self._vader is not None and count > 0:
+            try:
+                compound = self._vader.polarity_scores(text)["compound"]
+                if compound > 0.3:
+                    score = min(1.0, score + 0.1)
+            except Exception:
+                pass
+
+        return score
 
     def extract_signals(
         self, conversation_text: str, trade_metadata: Optional[Dict[str, Any]] = None
@@ -282,6 +370,7 @@ class DecisionQualityScorer:
         conversation_text: str,
         trade_metadata: Optional[Dict[str, Any]] = None,
         metacognitive_monitoring_score: float = 0.5,
+        reflection_quality: float = 0.0,
     ) -> DecisionQualityScore:
         """Compute decision quality score from conversation + trade metadata.
 
@@ -289,13 +378,15 @@ class DecisionQualityScorer:
             conversation_text: User conversation around the trade
             trade_metadata: Optional trade details
             metacognitive_monitoring_score: US-328 metacognitive monitoring score (0-1)
+            reflection_quality: US-342 journal reflection quality (0-1)
 
         Returns:
             DecisionQualityScore with all 8 dimensions + composite
         """
         signals = self.extract_signals(conversation_text, trade_metadata)
 
-        dim_scores = {
+        # US-339: Compute keyword-based scores then take max with semantic scores
+        keyword_scores = {
             "process_adherence": self._score_process_adherence(signals),
             "information_adequacy": self._score_information_adequacy(signals),
             "metacognitive_awareness": self._score_metacognitive_awareness(signals),
@@ -306,7 +397,22 @@ class DecisionQualityScorer:
             "cognitive_reflection": self._score_cognitive_reflection(signals),
         }
 
+        dim_scores = {}
+        for dim_name in self.WEIGHTS:
+            kw_score = keyword_scores[dim_name]
+            if dim_name == "metacognitive_monitoring":
+                # This dimension comes from MetacognitiveMonitoringScorer, not text
+                dim_scores[dim_name] = kw_score
+            else:
+                sem_score = self._semantic_score_dimension(conversation_text, dim_name)
+                dim_scores[dim_name] = max(kw_score, sem_score)
+
         composite = sum(dim_scores[k] * self.WEIGHTS[k] for k in self.WEIGHTS)
+
+        # US-342: Apply reflection quality boost (up to 10%)
+        if reflection_quality > 0:
+            composite = composite * (1.0 + 0.10 * reflection_quality)
+            composite = min(1.0, composite)
 
         result = DecisionQualityScore(
             timestamp=datetime.now(timezone.utc).isoformat(),

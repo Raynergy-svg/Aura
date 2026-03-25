@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import dataclasses
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -167,6 +168,9 @@ class ReadinessSignal:
     # US-313: Anomaly detection
     anomaly_detected: bool = False
     anomaly_severity: float = 0.0
+    # US-346: Anomaly-to-action pipeline
+    anomaly_action_taken: bool = False
+    anomaly_dampening: float = 0.0
     # US-314: Bias scores visibility for Buddy
     bias_scores: Dict[str, float] = field(default_factory=dict)
     # US-317: Override loss risk from predictor
@@ -180,6 +184,8 @@ class ReadinessSignal:
     # US-330: Regime shift detection
     regime_shift_detected: bool = False
     regime_shift_prob: float = 0.0
+    # US-334: Score reliability from Cronbach's alpha
+    reliability_score: float = 0.7  # Default assumes decent reliability
 
     def to_dict(self) -> Dict[str, Any]:
         result = {
@@ -200,6 +206,8 @@ class ReadinessSignal:
             "decision_variability": round(self.decision_variability, 3),
             "anomaly_detected": self.anomaly_detected,
             "anomaly_severity": round(self.anomaly_severity, 3),
+            "anomaly_action_taken": self.anomaly_action_taken,
+            "anomaly_dampening": round(self.anomaly_dampening, 4),
             "bias_scores": {k: round(v, 3) for k, v in self.bias_scores.items()},
             "override_loss_risk": round(self.override_loss_risk, 3),
             "trend_direction": self.trend_direction,
@@ -207,6 +215,7 @@ class ReadinessSignal:
             "recovery_score": round(self.recovery_score, 3),
             "regime_shift_detected": self.regime_shift_detected,
             "regime_shift_prob": round(self.regime_shift_prob, 4),
+            "reliability_score": round(self.reliability_score, 3),
         }
         if self.raw_score is not None:
             result["raw_score"] = round(self.raw_score, 1)
@@ -299,6 +308,44 @@ class AdaptiveWeightManager:
     def is_ready(self) -> bool:
         """Whether enough samples have been collected for adaptive weights."""
         return self._sample_count >= self.MIN_SAMPLES
+
+    def bootstrap_from_history(self, outcomes: List[Dict[str, Any]]) -> int:
+        """US-341: Replay past outcome signals to warm-start adaptive priors.
+
+        Args:
+            outcomes: List of dicts with 'success' (bool) and 'component_scores' (Dict[str, float])
+
+        Returns:
+            Number of valid outcomes processed
+        """
+        valid = 0
+        skipped = 0
+        for entry in outcomes:
+            if not isinstance(entry, dict):
+                skipped += 1
+                continue
+            success = entry.get("success")
+            comp_scores = entry.get("component_scores")
+            if success is None or not isinstance(comp_scores, dict):
+                skipped += 1
+                continue
+            # Update each component based on whether its signal was aligned with outcome
+            for comp_name in _COMPONENT_NAMES:
+                score = comp_scores.get(comp_name)
+                if score is None:
+                    continue
+                # High score (> 0.5) predicted positive outcome
+                predicted_positive = score > 0.5
+                prediction_correct = predicted_positive == bool(success)
+                self.update(comp_name, prediction_correct)
+            valid += 1
+
+        if skipped > 0:
+            logger.info("US-341: Bootstrap skipped %d malformed entries", skipped)
+        if valid > 0:
+            logger.info("US-341: Bootstrap loaded %d valid outcomes (sample_count=%d)",
+                        valid, self._sample_count)
+        return valid
 
     def save(self) -> None:
         """Persist adaptive weights to disk (atomic write)."""
@@ -589,6 +636,8 @@ class ReadinessComputer:
         self._override_history: List[Dict[str, Any]] = []
         # US-282: Store recent readiness scores for acceleration computation
         self._readiness_history: List[float] = []
+        # US-326: Stress level history for emotional regulation scoring
+        self._stress_history: List[Dict[str, Any]] = []
         # US-290: Optional V2 model for adaptive weighting
         self._v2_model = v2_model
         # US-301: Configurable circadian curve
@@ -607,6 +656,8 @@ class ReadinessComputer:
         self._decision_timestamps: List[float] = []
         # US-313: Anomaly detection via EWMA
         self._anomaly_detector = ReadinessAnomalyDetector()
+        # US-346: Anomaly history for spike dampening
+        self._anomaly_history: deque = deque(maxlen=50)
         # US-316: Lazy ConversationProcessor for cognitive load estimation
         self._conversation_processor = None
         # US-317: Optional override predictor
@@ -626,11 +677,80 @@ class ReadinessComputer:
             logger.debug("US-326: EmotionalRegulationScorer not available")
         # US-330: Bayesian changepoint detector
         self._changepoint_detector = None
+        self._last_changepoint_detected = False  # US-355: Track regime shift for anomaly dampening
         try:
             from src.aura.prediction.changepoint import BayesianChangePointDetector
             self._changepoint_detector = BayesianChangePointDetector()
         except ImportError:
             logger.debug("US-330: BayesianChangePointDetector not available")
+        # US-334: Readiness reliability analyzer (Cronbach's alpha)
+        self._reliability_analyzer = None
+        try:
+            from src.aura.analysis.reliability import ReadinessReliabilityAnalyzer
+            self._reliability_analyzer = ReadinessReliabilityAnalyzer()
+        except ImportError:
+            logger.debug("US-334: ReadinessReliabilityAnalyzer not available")
+        # US-335: Graph topology analyzer
+        self._graph_topology_analyzer = None
+        try:
+            from src.aura.analysis.graph_topology import GraphTopologyAnalyzer
+            self._graph_topology_analyzer = GraphTopologyAnalyzer()
+        except ImportError:
+            logger.debug("US-335: GraphTopologyAnalyzer not available")
+        # US-321: Decision quality scorer
+        self._decision_quality_scorer = None
+        try:
+            from src.aura.scoring.decision_quality import DecisionQualityScorer
+            self._decision_quality_scorer = DecisionQualityScorer()
+        except ImportError:
+            logger.debug("US-321: DecisionQualityScorer not available")
+        # US-328: Metacognitive monitoring scorer
+        self._metacognitive_scorer = None
+        try:
+            from src.aura.scoring.metacognitive import MetacognitiveMonitoringScorer
+            self._metacognitive_scorer = MetacognitiveMonitoringScorer()
+        except ImportError:
+            logger.debug("US-328: MetacognitiveMonitoringScorer not available")
+        # US-340: Cognitive flexibility scorer
+        self._flexibility_scorer = None
+        try:
+            from src.aura.scoring.cognitive_flexibility import CognitiveFlexibilityScorer
+            self._flexibility_scorer = CognitiveFlexibilityScorer()
+        except ImportError:
+            logger.debug("US-340: CognitiveFlexibilityScorer not available")
+        # US-342: Journal reflection scorer
+        self._journal_reflection_scorer = None
+        try:
+            from src.aura.scoring.journal_reflection import JournalReflectionScorer
+            self._journal_reflection_scorer = JournalReflectionScorer()
+        except ImportError:
+            logger.debug("US-342: JournalReflectionScorer not available")
+        # US-341: Bootstrap adaptive weights from bridge outcome history
+        if self._adaptive_weights and not self._adaptive_weights.is_ready():
+            self._bootstrap_adaptive_weights()
+
+    def _bootstrap_adaptive_weights(self) -> None:
+        """US-341: Attempt to bootstrap adaptive weights from bridge outcome_signal.json history."""
+        try:
+            bridge_dir = self.signal_path.parent
+            outcome_path = bridge_dir / "outcome_signal.json"
+            if not outcome_path.exists():
+                return
+            raw = json.loads(outcome_path.read_text())
+            # outcome_signal.json may be a single dict or a list of outcomes
+            if isinstance(raw, dict):
+                # Single outcome — wrap in list
+                outcomes = [raw] if "success" in raw else raw.get("history", [])
+            elif isinstance(raw, list):
+                outcomes = raw
+            else:
+                return
+            if outcomes:
+                loaded = self._adaptive_weights.bootstrap_from_history(outcomes)
+                if loaded > 0:
+                    logger.info("US-341: Bootstrapped adaptive weights from %d bridge outcomes", loaded)
+        except Exception as e:
+            logger.debug("US-341: Could not bootstrap from bridge: %s", e)
 
     def _compute_graph_features(self, graph) -> Dict[str, float]:
         """US-320: Extract readiness-relevant features from the self-model graph.
@@ -901,6 +1021,13 @@ class ReadinessComputer:
         bias_scores: Optional[Dict[str, float]] = None,
         message_text: Optional[str] = None,
         override_predictor=None,
+        style_drift_score: float = 0.0,
+        granularity_score: float = 0.5,
+        coherence_score: float = 0.5,
+        affect_volatility: float = 0.0,
+        affect_stuck: bool = False,
+        fatigue_score: float = 0.0,
+        bias_interaction_penalty: float = 0.0,
         graph=None,
     ) -> ReadinessSignal:
         """Compute the readiness score from current state.
@@ -1040,9 +1167,29 @@ class ReadinessComputer:
             engagement_score=engagement_score,
         )
 
-        # --- US-320: Graph-informed features ---
-        graph_features = self._compute_graph_features(graph or self._graph)
-        graph_context_score = graph_features["graph_context_score"]
+        # --- US-320/US-335: Graph-informed features ---
+        active_graph = graph or self._graph
+        if self._graph_topology_analyzer is not None and active_graph is not None:
+            try:
+                topology_features = self._graph_topology_analyzer.analyze(active_graph)
+                graph_context_score = topology_features.graph_context_score
+                graph_features = {
+                    "clustering_coefficient": topology_features.clustering_coefficient,
+                    "avg_betweenness": topology_features.avg_betweenness,
+                    "density": topology_features.density,
+                    "num_communities": topology_features.num_communities,
+                    "modularity": topology_features.modularity,
+                    "largest_component_ratio": topology_features.largest_component_ratio,
+                    "graph_context_score": graph_context_score,
+                }
+                logger.debug("US-335: Graph topology features — score=%.3f", graph_context_score)
+            except Exception as e:
+                logger.warning("US-335: Graph topology analysis failed, falling back to hand-crafted: %s", e)
+                graph_features = self._compute_graph_features(active_graph)
+                graph_context_score = graph_features["graph_context_score"]
+        else:
+            graph_features = self._compute_graph_features(active_graph)
+            graph_context_score = graph_features["graph_context_score"]
 
         # --- Compute weighted composite score (0-100) ---
         # US-302: Use adaptive weights if available and ready, else V1 static
@@ -1055,6 +1202,19 @@ class ReadinessComputer:
             "engagement": engagement_score,
         }
 
+        # --- US-334: Record components for reliability tracking ---
+        reliability_score_val = 0.7  # Default
+        if self._reliability_analyzer is not None:
+            try:
+                self._reliability_analyzer.record_components(component_scores)
+                rel_result = self._reliability_analyzer.compute()
+                reliability_score_val = rel_result.reliability_score
+                if rel_result.sufficient_data and rel_result.cronbachs_alpha < 0.6:
+                    logger.warning("US-334: Low internal consistency — alpha=%.3f, reliability=%.3f",
+                                   rel_result.cronbachs_alpha, reliability_score_val)
+            except Exception as e:
+                logger.warning("US-334: Reliability computation failed: %s", e)
+
         if self._adaptive_weights and self._adaptive_weights.is_ready():
             weights = self._adaptive_weights.get_weights()
             logger.info("US-302: Using adaptive weights (samples=%d)", self._adaptive_weights.sample_count)
@@ -1064,7 +1224,7 @@ class ReadinessComputer:
         # US-320: Blend graph context into composite (10% graph, 90% components)
         v1_raw = sum(component_scores[k] * weights[k] for k in _COMPONENT_NAMES)
         if graph is not None or self._graph is not None:
-            v1_raw = 0.9 * v1_raw + 0.1 * graph_context_score
+            v1_raw = 0.91 * v1_raw + 0.09 * graph_context_score
         v1_score = max(0.0, min(100.0, v1_raw * 100))
 
         # US-290: Try V2 model when available and trained
@@ -1103,8 +1263,15 @@ class ReadinessComputer:
             logger.info("US-282: Rapid confidence recovery — bonus applied (accel=%.4f)", confidence_acceleration)
 
         # --- US-283: Decision fatigue adjustment ---
-        fatigue_score = self.compute_fatigue_score(recent_override_events)
-        if fatigue_score > 0:
+        # Use provided fatigue_score if given (US-355), else compute from events
+        if fatigue_score == 0.0:  # Default value, not provided
+            fatigue_score = self.compute_fatigue_score(recent_override_events)
+        # Convert computed fatigue (0-1 scale) to 0-100 if needed
+        if fatigue_score <= 1.0:
+            fatigue_score_normalized = fatigue_score * 100.0  # Scale up for US-355 processing
+        else:
+            fatigue_score_normalized = fatigue_score  # Already on 0-100 scale
+        if fatigue_score <= 1.0 and fatigue_score > 0:  # Computed value (0-1 scale)
             readiness_score = max(0.0, readiness_score - fatigue_score * self.FATIGUE_PENALTY * 100)
 
         # --- US-301: Circadian readiness modulation ---
@@ -1204,21 +1371,63 @@ class ReadinessComputer:
                 except Exception as e:
                     logger.warning("US-324: Failed to log Life_Event node: %s", e)
 
+        # --- US-346: Anomaly-to-action pipeline ---
+        anomaly_action_taken = False
+        anomaly_dampening_val = 0.0
+        regime_dampening_reduced = False  # US-355: Track if dampening was reduced
+        if anomaly_detected and anomaly_severity > 0.5:
+            # Compute moving average from recent history
+            recent_scores = list(self._readiness_history)[-10:] if len(self._readiness_history) >= 2 else []
+            if recent_scores:
+                moving_avg = sum(recent_scores) / len(recent_scores)
+                # US-355: Anomaly-regime coordination — reduce dampening if regime shift active
+                if self._last_changepoint_detected:
+                    dampening_factor = anomaly_severity * 0.1  # regime shift: minimal dampening
+                    regime_dampening_reduced = True
+                    logger.info("US-355: Regime shift active — reduced anomaly dampening from %.1f%% to %.1f%%",
+                                anomaly_severity * 40, anomaly_severity * 10)
+                else:
+                    dampening_factor = anomaly_severity * 0.4  # normal dampening
+                pre_dampen = readiness_score
+                readiness_score = readiness_score * (1.0 - dampening_factor) + moving_avg * dampening_factor
+                readiness_score = max(0.0, min(100.0, readiness_score))
+                anomaly_action_taken = True
+                anomaly_dampening_val = dampening_factor
+                logger.info("US-346: Anomaly dampened — severity=%.2f, dampening=%.0f%%, pre=%.1f, post=%.1f",
+                           anomaly_severity, dampening_factor * 100, pre_dampen, readiness_score)
+
+        # US-346: Record anomaly event in history
+        if anomaly_detected:
+            import time as _anomaly_t
+            self._anomaly_history.append({
+                "timestamp": _anomaly_t.time(),
+                "direction": "drop" if anomaly_result.residual < 0 else "spike",
+                "severity": round(anomaly_severity, 3),
+                "readiness_before": round(readiness_score + (anomaly_dampening_val * readiness_score if anomaly_action_taken else 0), 1),
+                "readiness_after": round(readiness_score, 1),
+                "dampened": anomaly_action_taken,
+            })
+
         # --- US-326: Emotional regulation & recovery scoring ---
+        # GAP-003: Accumulate stress history with real timestamps
+        import time as _stress_t
+        self._stress_history.append({"stress_level_score": stress_level_score, "timestamp": _stress_t.time()})
+        if len(self._stress_history) > 50:
+            self._stress_history = self._stress_history[-50:]
+
         recovery_score = 0.5  # Default neutral
         if self._recovery_scorer is not None and len(self._readiness_history) >= 5:
             try:
-                stress_level_entries = [{"stress_level_score": stress_level_score, "timestamp": 0}]
                 recovery_metrics = self._recovery_scorer.score(
                     readiness_history=self._readiness_history,
                     override_events=recent_override_events,
-                    stress_levels=stress_level_entries,
+                    stress_levels=self._stress_history,
                     active_stressors_count=len(active_stressors),
                     current_readiness=readiness_score,
                 )
                 recovery_score = recovery_metrics.composite_recovery_score
-                # Blend recovery into readiness at 8% weight (scale remaining 92%)
-                readiness_score = 0.92 * readiness_score + 0.08 * (recovery_score * 100)
+                # Blend recovery into readiness at 6% weight (scale remaining 94%) — US-338 reduced from 8%
+                readiness_score = 0.94 * readiness_score + 0.06 * (recovery_score * 100)
                 readiness_score = max(0.0, min(100.0, readiness_score))
                 logger.info("US-326: Recovery score=%.3f (efficiency=%.3f, discipline=%.3f, absorption=%.3f)",
                             recovery_score, recovery_metrics.recovery_efficiency,
@@ -1230,12 +1439,14 @@ class ReadinessComputer:
         # --- US-330: Bayesian changepoint detection ---
         regime_shift_detected = False
         regime_shift_prob = 0.0
+        self._last_changepoint_detected = False  # US-355: Reset for this cycle
         if self._changepoint_detector is not None:
             try:
                 cp_result = self._changepoint_detector.update(readiness_score)
                 regime_shift_detected = cp_result.is_changepoint
                 regime_shift_prob = cp_result.changepoint_prob
                 if regime_shift_detected:
+                    self._last_changepoint_detected = True  # US-355: Flag for anomaly dampening coordination
                     logger.info("US-330: Regime shift detected — prob=%.3f, pre=%.1f, post=%.1f",
                                 cp_result.changepoint_prob, cp_result.pre_baseline, cp_result.post_baseline)
                     # Create REGIME_SHIFT Life_Event node in graph
@@ -1272,12 +1483,175 @@ class ReadinessComputer:
         trend_decomp = self._trend_analyzer.decompose()
         trend_direction = trend_decomp.get("trend_direction", "stable")
 
+        # --- US-321/US-328: Decision quality scoring ---
+        decision_quality_score_val = 0.0
+        if self._decision_quality_scorer is not None:
+            try:
+                # US-328: Compute metacognitive monitoring score first
+                metacog_score = 0.5
+                if self._metacognitive_scorer is not None:
+                    try:
+                        metacog_result = self._metacognitive_scorer.score()
+                        metacog_score = metacog_result.composite
+                    except Exception as e:
+                        logger.warning("US-328: Metacognitive scoring failed: %s", e)
+
+                # US-342: Compute journal reflection quality
+                reflection_quality = 0.0
+                if self._journal_reflection_scorer is not None:
+                    try:
+                        conversation_text_for_reflection = message_text or ""
+                        refl_result = self._journal_reflection_scorer.score(conversation_text_for_reflection)
+                        reflection_quality = refl_result.reflection_quality
+                    except Exception as e:
+                        logger.warning("US-342: Journal reflection scoring failed: %s", e)
+
+                # Use message_text if available, otherwise empty string (yields neutral scores)
+                conversation_text = message_text or ""
+                dq_result = self._decision_quality_scorer.score(
+                    conversation_text=conversation_text,
+                    metacognitive_monitoring_score=metacog_score,
+                    reflection_quality=reflection_quality,
+                )
+                decision_quality_score_val = dq_result.composite_score
+            except Exception as e:
+                logger.warning("US-321: Decision quality scoring failed: %s", e)
+
+        # --- US-338: Blend decision quality into readiness (7% weight) ---
+        if decision_quality_score_val > 0:
+            readiness_score = 0.93 * readiness_score + 0.07 * decision_quality_score_val
+            readiness_score = max(0.0, min(100.0, readiness_score))
+            logger.info("US-338: Decision quality blended — dq=%.1f, readiness=%.1f",
+                        decision_quality_score_val, readiness_score)
+            # Warn on high readiness with poor decision process
+            if decision_quality_score_val < 30 and readiness_score > 70:
+                logger.warning("US-338: High readiness (%.1f) with poor decision process (%.1f) — verify before trading",
+                               readiness_score, decision_quality_score_val)
+
+        # --- US-340: Cognitive flexibility bonus ---
+        flexibility_score = 0.0
+        if self._flexibility_scorer is not None and message_text:
+            try:
+                flex_result = self._flexibility_scorer.score(message_text)
+                flexibility_score = flex_result.composite
+                if flexibility_score > 0.3:
+                    flexibility_bonus = min(5.0, flexibility_score * 7.0)
+                    readiness_score = min(100.0, readiness_score + flexibility_bonus)
+                    logger.info("US-340: Flexibility bonus +%.1f (composite=%.3f)", flexibility_bonus, flexibility_score)
+                # Warn on rigid thinking with high confirmation bias
+                conf_bias = (bias_scores or {}).get("confirmation", 0.0)
+                if flexibility_score < 0.1 and conf_bias > 0.5:
+                    logger.warning("US-340: Rigid thinking detected — flexibility=%.2f, confirmation_bias=%.2f",
+                                   flexibility_score, conf_bias)
+            except Exception as e:
+                logger.warning("US-340: Flexibility scoring failed: %s", e)
+
+        # --- US-344: Style drift penalty ---
+        style_drift_penalty_applied = False
+        if style_drift_score > 0.4:
+            drift_penalty = min(5.0, (style_drift_score - 0.4) * 8.0)
+            readiness_score = max(0.0, readiness_score - drift_penalty)
+            style_drift_penalty_applied = True
+            logger.info("US-344: Style drift penalty -%.1f (drift=%.3f)", drift_penalty, style_drift_score)
+            if style_drift_score > 0.6:
+                logger.warning("US-344: High linguistic drift (%.3f) — verify emotional state", style_drift_score)
+
+        # --- US-350: Emotional granularity bonus/penalty ---
+        granularity_bonus_applied = 0.0
+        if granularity_score > 0.6:
+            granularity_bonus = min(3.0, (granularity_score - 0.6) * 7.5)
+            readiness_score = min(100.0, readiness_score + granularity_bonus)
+            granularity_bonus_applied = granularity_bonus
+            logger.info("US-350: Granularity bonus +%.1f (granularity=%.3f)", granularity_bonus, granularity_score)
+        elif granularity_score < 0.3 and (active_stressors or emotional_state.lower() in ["stressed", "anxious", "frustrated", "overwhelmed", "angry"]):
+            granularity_penalty = min(3.0, (0.3 - granularity_score) * 10.0)
+            readiness_score = max(0.0, readiness_score - granularity_penalty)
+            granularity_bonus_applied = -granularity_penalty
+            logger.warning("US-350: Granularity penalty -%.1f (granularity=%.3f) under stress", granularity_penalty, granularity_score)
+
+        readiness_score = max(0.0, min(100.0, readiness_score))
+
+        # --- US-350: Narrative coherence bonus/penalty ---
+        coherence_bonus_applied = 0.0
+        if coherence_score > 0.6:
+            coherence_bonus = min(2.0, (coherence_score - 0.6) * 5.0)
+            readiness_score = min(100.0, readiness_score + coherence_bonus)
+            coherence_bonus_applied = coherence_bonus
+            logger.info("US-350: Coherence bonus +%.1f (coherence=%.3f)", coherence_bonus, coherence_score)
+        elif coherence_score < 0.3:
+            coherence_penalty = min(2.0, (0.3 - coherence_score) * 6.67)
+            readiness_score = max(0.0, readiness_score - coherence_penalty)
+            coherence_bonus_applied = -coherence_penalty
+            logger.warning("US-350: Coherence penalty -%.1f (coherence=%.3f)", coherence_penalty, coherence_score)
+
+        readiness_score = max(0.0, min(100.0, readiness_score))
+
+        # --- US-355: Affect dynamics penalties ---
+        affect_penalty = 0.0
+        if affect_stuck:
+            affect_penalty = 5.0
+            readiness_score -= affect_penalty
+            logger.info("US-355: Stuck negative affect state — penalty=%.1f", affect_penalty)
+        elif affect_volatility > 0.6:
+            affect_penalty = min(3.0, (affect_volatility - 0.6) * 7.5)
+            readiness_score -= affect_penalty
+            logger.info("US-355: High affect volatility (%.2f) — penalty=%.1f", affect_volatility, affect_penalty)
+        readiness_score = max(0.0, min(100.0, readiness_score))
+
+        # --- US-355: Decision fatigue penalty ---
+        fatigue_penalty = 0.0
+        if fatigue_score_normalized > 70.0:
+            fatigue_penalty = min(6.0, (fatigue_score_normalized - 70.0) * 0.2)
+            readiness_score -= fatigue_penalty
+            logger.info("US-355: Decision fatigue active (%.1f) — penalty=%.1f", fatigue_score_normalized, fatigue_penalty)
+        readiness_score = max(0.0, min(100.0, readiness_score))
+
+        # --- US-355: Bias interaction penalty (on top of existing) ---
+        bias_interaction_penalty_applied = 0.0
+        if bias_interaction_penalty > 0:
+            readiness_score -= bias_interaction_penalty
+            bias_interaction_penalty_applied = bias_interaction_penalty
+            logger.info("US-355: Bias interaction penalty=%.1f", bias_interaction_penalty)
+            readiness_score = max(0.0, min(100.0, readiness_score))
+
+        # --- US-344: Reliability dampener ---
+        reliability_dampened = False
+        if reliability_score_val < 0.5 and self._reliability_analyzer is not None and len(self._reliability_analyzer.snapshots) >= 10:
+            readiness_score = 50.0 + (readiness_score - 50.0) * reliability_score_val
+            readiness_score = max(0.0, min(100.0, readiness_score))
+            reliability_dampened = True
+            logger.info("US-344: Reliability dampener applied (reliability=%.3f)", reliability_score_val)
+            if reliability_score_val < 0.4:
+                logger.warning("US-344: Low readiness reliability (%.3f) — score may be unreliable", reliability_score_val)
+
+        # --- GAP-009: Apply temporal maintenance to graph nodes ---
+        active_graph = graph or self._graph
+        if active_graph is not None and hasattr(active_graph, 'prune_dormant_nodes'):
+            try:
+                active_graph.prune_dormant_nodes()
+            except Exception as e:
+                logger.debug("GAP-009: Graph temporal maintenance skipped: %s", e)
+
         # --- US-303: EMA smoothing with hysteresis ---
         raw_score_val = readiness_score
         if self._last_smoothed_score is not None:
-            smoothed = self.EMA_ALPHA * readiness_score + (1.0 - self.EMA_ALPHA) * self._last_smoothed_score
+            # Use higher alpha (faster response) when emotional state signals
+            # genuine deterioration, so stressed/anxious/overwhelmed states
+            # aren't masked by the smoothing inertia.
+            negative_states = {"stressed", "anxious", "frustrated", "overwhelmed", "fatigued"}
+            if emotional_state.lower() in negative_states and readiness_score < self._last_smoothed_score:
+                ema_alpha = min(0.7, self.EMA_ALPHA * 2.0)  # 2x faster response on deterioration
+            else:
+                ema_alpha = self.EMA_ALPHA
+            smoothed = ema_alpha * readiness_score + (1.0 - ema_alpha) * self._last_smoothed_score
             # Hysteresis: only update if delta exceeds threshold
-            if abs(smoothed - self._last_smoothed_score) >= self.HYSTERESIS_THRESHOLD:
+            # Use a lower threshold (2.0) for drops under negative emotional states
+            # to prevent the smoothing from masking real deterioration.
+            if emotional_state.lower() in negative_states and readiness_score < self._last_smoothed_score:
+                effective_threshold = min(self.HYSTERESIS_THRESHOLD, 2.0)
+            else:
+                effective_threshold = self.HYSTERESIS_THRESHOLD
+            if abs(smoothed - self._last_smoothed_score) >= effective_threshold:
                 self._last_smoothed_score = smoothed
                 readiness_score = smoothed
             else:
@@ -1288,7 +1662,7 @@ class ReadinessComputer:
 
         readiness_score = max(0.0, min(100.0, readiness_score))
 
-        # --- US-323/US-326/US-330: Cache state snapshot for bridge enrichment ---
+        # --- US-323/US-326/US-330/US-334: Cache state snapshot for bridge enrichment ---
         self._last_state_snapshot = {
             "readiness_score": readiness_score,
             "components": components.to_dict(),
@@ -1301,6 +1675,18 @@ class ReadinessComputer:
             "recovery_score": recovery_score,
             "regime_shift_detected": regime_shift_detected,
             "regime_shift_prob": regime_shift_prob,
+            "reliability_score": reliability_score_val,
+            "decision_quality_blended": decision_quality_score_val > 0,
+            "style_drift_penalty_applied": style_drift_penalty_applied,
+            "reliability_dampened": reliability_dampened,
+            "anomaly_dampened": anomaly_action_taken,
+            "granularity_bonus_applied": granularity_bonus_applied,
+            "coherence_bonus_applied": coherence_bonus_applied,
+            # US-355: Phase 19 state snapshot fields
+            "affect_penalty_applied": affect_penalty,
+            "fatigue_penalty_applied": fatigue_penalty,
+            "bias_interaction_penalty_applied": bias_interaction_penalty_applied,
+            "regime_dampening_reduced": regime_dampening_reduced,
         }
 
         # --- Build signal ---
@@ -1324,12 +1710,16 @@ class ReadinessComputer:
             decision_variability=decision_variability,
             anomaly_detected=anomaly_detected,
             anomaly_severity=anomaly_severity,
+            anomaly_action_taken=anomaly_action_taken,
+            anomaly_dampening=anomaly_dampening_val,
             bias_scores=bias_scores or {},
             override_loss_risk=override_loss_risk,
             trend_direction=trend_direction,
             recovery_score=recovery_score,
             regime_shift_detected=regime_shift_detected,
+            decision_quality_score=decision_quality_score_val,
             regime_shift_prob=regime_shift_prob,
+            reliability_score=reliability_score_val,
         )
 
         # --- Write signal to bridge file for Buddy to read ---

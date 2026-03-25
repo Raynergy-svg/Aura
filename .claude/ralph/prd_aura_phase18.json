@@ -1,0 +1,120 @@
+{
+  "phase": 18,
+  "title": "Signal Integration, Emotional Granularity & Anomaly Action Pipeline",
+  "codename": "aura_phase18_signal_integration",
+  "created": "2026-03-25",
+  "status": "complete",
+  "rationale": "Phase 17 completed decision quality wiring, cognitive flexibility, journal reflection, and adaptive weight bootstrap. Web research + codebase gap analysis reveals 6 critical gaps: (1) Style drift (US-333) is computed but NEVER influences readiness — high drift during stressed states should penalize. (2) Reliability score (US-334) is computed and stored but never dampens confidence — low reliability should widen uncertainty bands. (3) Anomaly detection (US-313) logs events and creates graph nodes but takes NO corrective action — spikes should be dampened, drops should trigger bridge flags. (4) No emotional granularity measurement — research (Frontiers Psychology 2024, Barrett 2017 'How Emotions Are Made') shows emotion vocabulary diversity predicts emotional intelligence and decision quality. Shannon entropy of emotion labels is a validated metric. (5) No narrative coherence tracking — session-over-session consistency in reasoning, strategy, and emotional tone is a predictor of stable decision-making. (6) Style drift is disconnected from pattern detection — sudden drift should be a T1 early-warning signal. Phase 18 wires these orphaned signals into the readiness pipeline, adds emotional granularity scoring, narrative coherence tracking, and an anomaly-to-action pipeline.",
+  "stories": [
+    {
+      "id": "US-344",
+      "title": "Wire style drift penalty + reliability dampener into readiness",
+      "description": "Style drift (US-333) computes a 0-1 score in ConversationSignals but the value ONLY appears in to_dict() — it never modifies readiness_score. Similarly, reliability (US-334) is computed and stored in state_snapshot but never dampens the score. Wire both: (1) Style drift penalty: when style_drift_score > 0.4, apply penalty = min(5.0, (style_drift_score - 0.4) * 8.0) to readiness. (2) Reliability dampener: when reliability_score < 0.5 and sufficient_data=True, multiply readiness delta (vs 50.0 neutral) by reliability_score, pulling extreme scores toward 50. ReadinessComputer.compute() must accept style_drift_score parameter (from ConversationSignals). Add both to state_snapshot.",
+      "acceptance": [
+        "ReadinessComputer.compute() gains optional parameter style_drift_score: float = 0.0",
+        "Style drift penalty applied after flexibility bonus: if style_drift_score > 0.4, readiness_score -= min(5.0, (style_drift_score - 0.4) * 8.0)",
+        "Readiness clamped to [0, 100] after penalty",
+        "Reliability dampener applied after style drift: if reliability_score < 0.5 and sufficient_data, readiness_score = 50.0 + (readiness_score - 50.0) * reliability_score",
+        "Warning logged when style_drift > 0.6: 'high linguistic drift — verify emotional state'",
+        "Warning logged when reliability < 0.4: 'low readiness reliability — score may be unreliable'",
+        "State snapshot gains 'style_drift_penalty_applied': bool and 'reliability_dampened': bool",
+        "At least 8 tests: drift > 0.4 reduces readiness, drift <= 0.4 no effect, drift = 1.0 caps at -5 penalty, reliability < 0.5 pulls toward 50, reliability >= 0.5 no dampening, combined drift + reliability, drift warning at 0.6, reliability warning at 0.4"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-345",
+      "title": "EmotionalGranularityScorer: emotion vocabulary diversity via Shannon entropy",
+      "description": "Emotional granularity — the ability to make fine-grained distinctions between emotions — predicts better emotion regulation and decision-making (Barrett 2017, Frontiers Psychology 2024). Implement EmotionalGranularityScorer that tracks the diversity of emotion labels across recent messages. Metrics: (1) vocabulary_richness — unique emotion words / total emotion words (type-token ratio). (2) entropy — Shannon entropy of emotion word frequency distribution (higher = more diverse). (3) differentiation — does the person distinguish between similar emotions ('anxious' vs 'nervous' vs 'worried')? Composite granularity_score fed into ConversationSignals as a new field. Low granularity (< 0.3) with high stress triggers a warning.",
+      "acceptance": [
+        "New class EmotionalGranularityScorer in src/aura/scoring/emotional_granularity.py",
+        "Constructor takes window_size: int = 20 (number of messages to track)",
+        "update(text: str) -> EmotionalGranularityResult with vocabulary_richness (0-1), entropy (float, normalized to 0-1), differentiation (0-1), composite (0-1)",
+        "Emotion lexicon: at least 60 emotion words organized into 8 clusters (joy, sadness, anger, fear, surprise, disgust, trust, anticipation — Plutchik's wheel)",
+        "vocabulary_richness = unique_emotion_words / max(1, total_emotion_words)",
+        "entropy = -sum(p * log2(p)) / log2(num_clusters), normalized to 0-1",
+        "differentiation = within-cluster variety score: how many distinct words per activated cluster, averaged",
+        "composite = 0.35 * vocabulary_richness + 0.40 * entropy + 0.25 * differentiation",
+        "ConversationSignals gains emotional_granularity_score: float = 0.5 field",
+        "ConversationProcessor integrates: calls scorer.update(message_text) and stores result",
+        "At least 8 tests: single emotion word low granularity, diverse vocabulary high granularity, entropy increases with diversity, differentiation detects within-cluster variety, empty text returns defaults, window respects max size, composite weighting correct, integration with ConversationSignals"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-346",
+      "title": "Anomaly-to-action pipeline: spike dampener, bridge flag, /anomalies CLI",
+      "description": "ReadinessAnomalyDetector (US-313) detects anomalies and logs them but takes NO corrective action — a sudden +30 point spike from a single excited message can produce a dangerously misleading readiness signal. Implement 3 actions: (1) Spike dampener: when anomaly_detected and severity > 0.5, dampen the readiness score toward the recent moving average by severity * 0.4 (so a severity-1.0 spike gets 40% dampened). (2) Bridge flag: add anomaly_action_taken: bool and anomaly_dampening: float to ReadinessSignal so Buddy can see when the score was artificially adjusted. (3) /anomalies CLI command: shows last 10 anomaly events with timestamps, direction (spike/drop), severity, and whether dampening was applied.",
+      "acceptance": [
+        "After anomaly detection block in compute(), if anomaly_detected and severity > 0.5: calculate moving_avg from last 10 readiness_history entries, dampening = severity * 0.4, readiness_score = readiness_score * (1 - dampening) + moving_avg * dampening",
+        "Clamp result to [0, 100]",
+        "Log info: 'US-346: Anomaly dampened — severity=X, dampening=Y%, pre=Z, post=W'",
+        "ReadinessSignal gains anomaly_action_taken: bool = False and anomaly_dampening: float = 0.0",
+        "State snapshot gains 'anomaly_dampened': bool",
+        "AuraCompanion handles /anomalies command: displays last 10 anomaly events from a rolling deque stored in ReadinessComputer",
+        "ReadinessComputer gains _anomaly_history: deque(maxlen=50) storing anomaly event dicts",
+        "Each anomaly event dict: timestamp, direction, severity, readiness_before, readiness_after, dampened (bool)",
+        "At least 8 tests: severity > 0.5 dampens score, severity <= 0.5 no dampening, dampening amount correct (severity * 0.4 blend), bridge flags set correctly, anomaly history stored, /anomalies CLI output format, moving average calculation correct, no anomaly no action"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-347",
+      "title": "Style drift as T1 early-warning event",
+      "description": "Linguistic style drift (US-333) is a leading indicator of emotional state changes — research shows writing style shifts before self-reported mood changes (Computational Linguistics 2023). Connect style drift to the T1 pattern engine: when style_drift_score exceeds 0.5 for 3+ consecutive messages, generate a T1 pattern of type 'style_drift_warning' in domain HUMAN. This creates an early-warning signal that can propagate to T2 cross-domain analysis. Store drift history in ConversationProcessor for the sliding window check.",
+      "acceptance": [
+        "ConversationProcessor gains _drift_history: List[float] (stores last 10 style_drift_scores)",
+        "After computing style_drift_score, append to _drift_history (cap at 10)",
+        "New method check_drift_warning() -> Optional[Dict]: returns warning dict if last 3+ entries > 0.5",
+        "Warning dict structure: {'type': 'style_drift_warning', 'consecutive_count': int, 'avg_drift': float, 'max_drift': float, 'domain': 'HUMAN'}",
+        "T1DailyDetector.detect() accepts optional drift_warnings: List[Dict] parameter",
+        "When drift_warnings present, T1 generates DetectedPattern(pattern_type='style_drift_warning', domain=PatternDomain.HUMAN, confidence=min(1.0, avg_drift * 1.5))",
+        "Pattern label includes consecutive count: 'Linguistic style drift sustained (N messages)'",
+        "At least 8 tests: 3 consecutive drifts > 0.5 triggers warning, 2 consecutive no trigger, drift drops below 0.5 resets count, T1 generates pattern from warning, pattern confidence scales with drift magnitude, drift history capped at 10, empty history safe, integration with ConversationProcessor"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-348",
+      "title": "NarrativeCoherenceTracker: cross-session reasoning consistency",
+      "description": "Narrative coherence — maintaining consistent reasoning, strategy references, and emotional tone across sessions — predicts stable decision-making (British Journal Ed Tech 2025, Pennebaker's linguistic analysis research). Implement NarrativeCoherenceTracker with 3 metrics: (1) lexical_overlap — Jaccard similarity of content words between current and previous 3 sessions (higher = more consistent vocabulary). (2) sentiment_consistency — 1 - std_dev(sentiment_scores) over recent sessions (higher = more emotionally stable). (3) strategy_persistence — does the trader reference the same strategies/plans across sessions? Track strategy keywords. Composite coherence_score stored in ConversationSignals. Low coherence (< 0.3) triggers a warning about inconsistent reasoning.",
+      "acceptance": [
+        "New class NarrativeCoherenceTracker in src/aura/scoring/narrative_coherence.py",
+        "Constructor takes window_size: int = 5 (sessions to compare)",
+        "update(text: str, sentiment: float) -> NarrativeCoherenceResult with lexical_overlap (0-1), sentiment_consistency (0-1), strategy_persistence (0-1), composite (0-1)",
+        "Strategy keyword list: at least 30 trading strategy terms ('breakout', 'pullback', 'trend follow', 'mean reversion', 'support', 'resistance', 'stop loss', 'take profit', etc.)",
+        "lexical_overlap = Jaccard similarity of content word sets (exclude stopwords) between current and concat of prev N sessions",
+        "sentiment_consistency = max(0.0, 1.0 - 2.0 * std_dev(recent_sentiments))",
+        "strategy_persistence = overlap of strategy terms mentioned in current vs previous sessions",
+        "composite = 0.35 * lexical_overlap + 0.35 * sentiment_consistency + 0.30 * strategy_persistence",
+        "ConversationSignals gains narrative_coherence_score: float = 0.5 field",
+        "At least 8 tests: identical sessions high coherence, completely different sessions low coherence, sentiment stability measured, strategy persistence detected, single session returns defaults, stopwords excluded from lexical overlap, composite weighting correct, empty text safe"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-349",
+      "title": "Phase 18 integration tests + /granularity and /coherence CLI commands",
+      "description": "Write integration tests verifying the full Phase 18 pipeline: (1) Style drift penalty reduces readiness on drifted text. (2) Reliability dampener pulls extreme scores toward 50 when reliability is low. (3) Anomaly spike dampener reduces sudden spikes. (4) Style drift triggers T1 pattern after 3+ consecutive warnings. (5) Emotional granularity reflects vocabulary diversity. (6) Narrative coherence tracks cross-session consistency. Plus add /granularity CLI command showing emotion vocabulary richness, entropy, and differentiation. Add /coherence CLI command showing lexical overlap, sentiment consistency, and strategy persistence.",
+      "acceptance": [
+        "At least 3 integration tests using real instances (no mocks on production code)",
+        "Test 1: High style drift (0.7) text -> readiness reduced by ~2.4 points vs no drift",
+        "Test 2: Anomaly spike detected (severity > 0.5) -> readiness dampened toward moving average",
+        "Test 3: 3+ messages with drift > 0.5 -> T1 produces style_drift_warning pattern",
+        "Test 4: Low reliability (0.3) -> readiness pulled 70% toward 50 (from 80 -> ~59)",
+        "Test 5: Diverse emotion text -> granularity_score > 0.5, single emotion text -> < 0.3",
+        "AuraCompanion handles /granularity command: displays vocabulary_richness, entropy, differentiation, composite with interpretation",
+        "AuraCompanion handles /coherence command: displays lexical_overlap, sentiment_consistency, strategy_persistence, composite for recent sessions",
+        "All integration tests use NEUTRAL_CIRCADIAN to isolate from time-of-day effects",
+        "At least 8 tests total across integration + CLI scenarios"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

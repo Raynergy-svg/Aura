@@ -1,0 +1,122 @@
+{
+  "phase": 16,
+  "title": "Linguistic Depth, Score Reliability & Graph Topology",
+  "codename": "aura_phase16_linguistic_reliability",
+  "created": "2026-03-25",
+  "status": "complete",
+  "rationale": "Phase 15 added recovery intelligence, expanded biases (4→9), metacognitive monitoring, adaptive learning rates, and Bayesian changepoint detection. Web research + codebase gap analysis reveals 3 critical gaps: (1) ConversationProcessor uses keyword matching but has no readability metrics (Flesch-Kincaid, SMOG) — cognitive clarity is a direct proxy for trader state. (2) No temporal linguistic tracking — trader writing style changes (pronoun shifts, sentence volatility, vocabulary diversity) are early warning signals of deterioration. (3) No Cronbach's alpha or internal consistency measurement — 6 readiness components may be multicollinear or noisy, and we can't tell. Additionally: (4) Graph topology is hand-crafted (4 features) but misses principled graph statistics (clustering, centrality, community detection). (5) BiasDetector doesn't use US-280 negation-awareness — 'I'm NOT overconfident' triggers overconfidence detection incorrectly. Phase 16 focuses on deepening semantic analysis, measuring score reliability, and enriching graph-derived features.",
+  "stories": [
+    {
+      "id": "US-332",
+      "title": "Text readability metrics for cognitive state estimation",
+      "description": "Add Flesch-Kincaid reading ease, Gunning Fog index, and vocabulary diversity to ConversationSignals. Research shows cognitive state correlates with text complexity: stressed/impulsive traders write shorter, simpler sentences; disciplined traders write longer, more structured text. Integrate textstat library for standardized readability scoring. Add readability_score to ConversationSignals and blend into cognitive_load computation at 30% weight (current text-structure features at 70%).",
+      "acceptance": [
+        "pip install textstat (lightweight, no heavy deps)",
+        "ConversationProcessor.process_message() computes 3 readability metrics: flesch_reading_ease, gunning_fog, vocabulary_diversity (unique_words / total_words)",
+        "ConversationSignals gains readability_score: float field (0-1 normalized)",
+        "Normalization: flesch_reading_ease mapped from 0-100 to 0-1; gunning_fog inverted and capped; vocabulary_diversity direct",
+        "readability_score = 0.4 * flesch_norm + 0.3 * fog_norm + 0.3 * vocab_diversity",
+        "cognitive_load computation updated: 0.70 * text_structure_load + 0.30 * (1 - readability_score)",
+        "Short messages (< 5 words) return readability_score = 0.5 (neutral, insufficient text)",
+        "At least 8 tests: simple text high readability, complex text low readability, short text neutral, vocabulary diversity scales, integration with cognitive_load, flesch normalization bounds, fog normalization bounds, empty text safe"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-333",
+      "title": "Temporal linguistic style tracking for early warning",
+      "description": "Track 5 linguistic style metrics across consecutive messages to detect deterioration: (1) avg_sentence_length — drops under stress. (2) exclamation_density — spikes with emotional escalation. (3) caps_ratio — rises with anger/frustration. (4) pronoun_i_ratio — shifts indicate distancing or hyper-focus. (5) question_ratio — increases with uncertainty. Compute a style_drift_score comparing current message's 5-vector against the rolling 10-message baseline (Euclidean distance). High drift = potential state change. Store style history in ConversationProcessor for cross-message tracking.",
+      "acceptance": [
+        "New class LinguisticStyleTracker in src/aura/analysis/style_tracker.py",
+        "track_message(message_text) → StyleSnapshot with 5 metrics",
+        "StyleSnapshot: avg_sentence_length, exclamation_density, caps_ratio, pronoun_i_ratio, question_ratio",
+        "compute_drift() → float (0-1): Euclidean distance from rolling 10-message baseline, normalized",
+        "Baseline starts after 3 messages (returns 0.0 before that)",
+        "Rolling window stores last 20 StyleSnapshot entries (FIFO)",
+        "ConversationProcessor.process_message() calls style_tracker.track_message() and stores drift score",
+        "ConversationSignals gains style_drift_score: float field (0-1)",
+        "Drift > 0.5 logged as warning for pattern detection input",
+        "At least 8 tests: baseline initialization, normal text low drift, stressed text high drift, caps detection, exclamation detection, question ratio, pronoun shift, rolling window FIFO behavior"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-334",
+      "title": "Cronbach's alpha for readiness score reliability",
+      "description": "Measure internal consistency of the 6 readiness components using Cronbach's alpha over a sliding window. If alpha < 0.6, the readiness score is noisy (components disagree) — flag this in the signal so Buddy can discount it. Also compute split-half reliability by comparing odd/even component pairs. Add reliability_score to ReadinessSignal. If reliability < 0.5 and readiness > 60, add a warning: 'high readiness but low consistency — treat with caution'.",
+      "acceptance": [
+        "New class ReadinessReliabilityAnalyzer in src/aura/analysis/reliability.py",
+        "record_components(components_dict: Dict[str, float]) stores component vectors",
+        "cronbachs_alpha(window: int = 20) → float: computes alpha over last N component snapshots",
+        "split_half_reliability() → float: correlation between odd-indexed and even-indexed component averages",
+        "reliability_score = 0.6 * cronbachs_alpha + 0.4 * split_half_reliability",
+        "Minimum 10 snapshots before scoring activates (returns 0.7 default below threshold)",
+        "ReadinessComputer.compute() records components and computes reliability_score",
+        "ReadinessSignal gains reliability_score: float field (0-1)",
+        "ReadinessSignal.to_dict() includes reliability_score",
+        "At least 8 tests: insufficient data returns default, perfect consistency alpha=1.0, random components low alpha, split-half correlation, reliability in signal, window sliding works, warning on low reliability + high readiness, integration with compute()"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-335",
+      "title": "Graph topology statistics for structural readiness features",
+      "description": "Replace hand-crafted graph features (US-320) with principled graph topology statistics using networkx algorithms. Compute 6 features: (1) clustering_coefficient — triangles in trader's goal/decision network. (2) avg_betweenness — bottleneck identification. (3) density — graph connectivity. (4) num_communities — Louvain community detection for life-domain fragmentation. (5) modularity — how separated communities are. (6) largest_component_ratio — largest connected component / total nodes. These replace the 4 hand-crafted features and feed into graph_context_score at the same 10% weight.",
+      "acceptance": [
+        "New class GraphTopologyAnalyzer in src/aura/analysis/graph_topology.py",
+        "analyze(graph: SelfModelGraph) → GraphTopologyFeatures dataclass with 6 float fields",
+        "Uses networkx for computation: build nx.Graph from SelfModelGraph edges",
+        "clustering_coefficient: nx.average_clustering(G), default 0.0 if < 3 nodes",
+        "avg_betweenness: mean(nx.betweenness_centrality(G).values()), default 0.0",
+        "density: nx.density(G), default 0.0",
+        "num_communities: len(nx.community.louvain_communities(G, seed=42)), normalized to 0-1 via min(communities/10, 1.0)",
+        "modularity: nx.community.modularity(G, communities), clamped 0-1",
+        "largest_component_ratio: max(len(c) for c in nx.connected_components(G)) / G.number_of_nodes()",
+        "graph_context_score = mean of 6 features (each 0-1)",
+        "ReadinessComputer uses GraphTopologyAnalyzer instead of hand-crafted _compute_graph_features()",
+        "Graceful fallback: if networkx unavailable or graph empty, return all 0.5 (neutral)",
+        "At least 8 tests: empty graph neutral, single node safe, connected graph high density, community detection works, clustering coefficient, betweenness centrality, modularity score, integration with readiness compute"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-336",
+      "title": "Negation-aware bias detection",
+      "description": "BiasDetector (US-327) uses exact keyword matching without negation awareness — 'I am NOT overconfident' triggers overconfidence=true. Apply the same negation logic from US-280 (ConversationProcessor._apply_negation_awareness) to all 9 bias detection methods. Check for negation words ('not', 'no', 'never', 'don\\'t', 'didn\\'t', 'isn\\'t', 'won\\'t', 'can\\'t', 'haven\\'t', 'shouldn\\'t') within 3 tokens before a bias keyword. If negated, skip the match. This is a targeted correctness fix that prevents false positive bias detection.",
+      "acceptance": [
+        "BiasDetector gains _is_negated(text, keyword_position) helper method",
+        "Negation check: scan 3 tokens before keyword for negation words",
+        "NEGATION_WORDS list: 'not', 'no', 'never', 'don't', 'didn't', 'isn't', 'won't', 'can't', 'haven't', 'shouldn't', 'neither', 'nor', 'without'",
+        "All 9 bias detection methods (disposition, loss_aversion, recency, confirmation, sunk_cost, anchoring, overconfidence, hindsight, attribution_error) pass keywords through negation filter",
+        "Negated matches excluded from bias score computation",
+        "Non-negated matches still score identically to previous behavior",
+        "At least 8 tests: negated overconfidence not detected, non-negated overconfidence still detected, negated sunk cost not detected, double negation handling, negation window (3 tokens), all 9 biases negation-aware, edge case empty text, edge case keyword at start of text"
+      ],
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-337",
+      "title": "Phase 16 integration tests + /reliability and /style CLI commands",
+      "description": "Write integration tests verifying the full Phase 16 pipeline: (1) readability metrics flow through cognitive_load to readiness. (2) Style drift detected across message sequence. (3) Cronbach's alpha computed from component history. (4) Graph topology features replace hand-crafted. (5) Negated biases correctly excluded. Plus add /reliability CLI command showing Cronbach's alpha, split-half, and reliability_score. Add /style CLI command showing last 5 style snapshots with drift indicator.",
+      "acceptance": [
+        "At least 3 integration tests using real instances (no mocks on production code)",
+        "Test 1: Complex message → readability_score < 0.4 → cognitive_load increases → readiness drops",
+        "Test 2: Sequence of 5 calm messages then 5 stressed messages → style_drift_score > 0.3",
+        "Test 3: 20 compute() calls → cronbachs_alpha computed → reliability_score in signal",
+        "Test 4: Graph with nodes → topology features computed → graph_context_score in readiness",
+        "Test 5: Negated bias text → bias score = 0.0 for negated keyword, non-negated still detected",
+        "AuraCompanion handles /reliability command: displays alpha, split-half, composite with visual bars",
+        "AuraCompanion handles /style command: displays last 5 style snapshots with drift arrows",
+        "All integration tests use NEUTRAL_CIRCADIAN to isolate from time-of-day effects",
+        "At least 8 tests total across integration + CLI scenarios"
+      ],
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}
