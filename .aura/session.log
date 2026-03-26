@@ -1,0 +1,396 @@
+22:47:49 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+22:47:49 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+22:47:49 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=38.8
+22:47:49 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+22:48:23 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+22:48:23 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+22:48:23 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=38.8
+22:48:23 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+22:48:26 [src.aura.patterns.tier1] INFO: T1: Detected 2 patterns
+22:48:26 [src.aura.cli.companion] INFO: T1 detected 2 patterns after message #1
+22:48:26 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.83 stressor=0.80 final=0.81
+22:48:26 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=2, sufficient=False
+22:48:26 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+22:48:26 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=36.9
+22:48:26 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.81, override=0.80, stress=0.84)
+22:48:26 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+22:48:46 [src.aura.patterns.tier1] INFO: T1: Detected 2 patterns
+22:48:46 [src.aura.cli.companion] INFO: T1 detected 2 patterns after message #3
+22:48:46 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.79 stressor=0.80 final=0.79
+22:48:46 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=3, sufficient=False
+22:48:46 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+22:48:46 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=37.4
+22:48:46 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.79, override=0.80, stress=0.84)
+22:48:46 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:04:00 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+23:04:00 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+23:04:00 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=38.8
+23:04:00 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+23:04:07 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.83 stressor=0.90 final=0.86
+23:04:07 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=2, sufficient=False
+23:04:07 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:04:07 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=38.5
+23:04:07 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+23:04:07 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:04:39 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.79 stressor=0.90 final=0.84
+23:04:39 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=3, sufficient=False
+23:04:39 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:04:39 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=39.0
+23:04:39 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.84, override=0.80, stress=1.00)
+23:04:39 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:05:15 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+23:05:15 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=4, sufficient=False
+23:05:15 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:05:15 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=38.8
+23:05:15 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+23:05:15 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:09:29 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+23:09:29 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+23:09:29 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=38.8
+23:09:29 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+23:09:48 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.84 stressor=0.90 final=0.87
+23:09:48 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=2, sufficient=False
+23:09:48 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:09:48 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=38.6
+23:09:48 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.87, override=0.80, stress=1.00)
+23:09:48 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:10:15 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+23:10:15 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=3, sufficient=False
+23:10:15 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:10:15 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=39.5
+23:10:15 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+23:10:15 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:10:27 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.83 stressor=0.90 final=0.86
+23:10:27 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=4, sufficient=False
+23:10:27 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:10:27 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=37.1
+23:10:27 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+23:10:27 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:10:44 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.71 stressor=0.90 final=0.81
+23:10:44 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=5, sufficient=False
+23:10:44 [src.aura.core.readiness] INFO: US-326: Recovery score=0.616 (efficiency=0.352, discipline=1.000, absorption=0.500)
+23:10:44 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:10:44 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=34.4
+23:10:44 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.81, override=0.80, stress=1.00)
+23:10:44 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:10:59 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+23:10:59 [src.aura.core.readiness] INFO: US-293: Bias penalty applied — aggregate=0.028, discipline reduced to 0.793
+23:10:59 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=6, sufficient=False
+23:10:59 [src.aura.core.readiness] INFO: US-326: Recovery score=0.748 (efficiency=0.682, discipline=1.000, absorption=0.500)
+23:10:59 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:10:59 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=35.5
+23:10:59 [src.aura.core.readiness] INFO: Readiness score: 39/100 (emotional=0.70, cognitive=0.90, override=0.79, stress=1.00)
+23:10:59 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=38.8, biases=9, risk=0.00
+23:11:18 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.86 stressor=0.90 final=0.88
+23:11:18 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=7, sufficient=False
+23:11:18 [src.aura.core.readiness] INFO: US-326: Recovery score=0.475 (efficiency=0.000, discipline=1.000, absorption=0.500)
+23:11:18 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:11:18 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=31.0
+23:11:18 [src.aura.core.readiness] WARNING: US-350: Granularity penalty -3.0 (granularity=0.000) under stress
+23:11:18 [src.aura.core.readiness] INFO: Readiness score: 32/100 (emotional=0.40, cognitive=0.88, override=0.80, stress=1.00)
+23:11:18 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=32.3, biases=9, risk=0.00
+23:11:45 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.82 stressor=0.90 final=0.86
+23:11:45 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=8, sufficient=False
+23:11:45 [src.aura.core.readiness] INFO: US-282: Rapid confidence recovery — bonus applied (accel=0.1482)
+23:11:45 [src.aura.core.readiness] INFO: US-326: Recovery score=0.845 (efficiency=0.924, discipline=1.000, absorption=0.500)
+23:11:45 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+23:11:45 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=37.5
+23:11:45 [src.aura.core.readiness] INFO: Readiness score: 32/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+23:11:45 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=32.3, biases=9, risk=0.00
+09:37:01 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+09:37:01 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+09:37:01 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=65.5
+09:37:01 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+09:37:18 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.77 stressor=0.90 final=0.84
+09:37:18 [src.aura.core.readiness] INFO: US-293: Bias penalty applied — aggregate=0.028, discipline reduced to 0.793
+09:37:18 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=2, sufficient=False
+09:37:18 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:37:18 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=64.4
+09:37:18 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.84, override=0.79, stress=1.00)
+09:37:18 [src.aura.cli.companion] WARNING: US-311: Bridge staleness: outcome signal is stale (>24 hours)
+09:37:18 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:38:12 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.80 stressor=0.90 final=0.85
+09:38:12 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=3, sufficient=False
+09:38:12 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:38:12 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=64.7
+09:38:12 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.85, override=0.80, stress=1.00)
+09:38:12 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:39:26 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+09:39:26 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=4, sufficient=False
+09:39:26 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:39:26 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=66.7
+09:39:26 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+09:39:26 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:41:23 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+09:41:23 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=5, sufficient=False
+09:41:23 [src.aura.core.readiness] INFO: US-326: Recovery score=0.475 (efficiency=0.000, discipline=1.000, absorption=0.500)
+09:41:23 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:41:23 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=62.1
+09:41:23 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+09:41:23 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:41:47 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.83 stressor=0.90 final=0.86
+09:41:47 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=6, sufficient=False
+09:41:47 [src.aura.core.readiness] INFO: US-326: Recovery score=0.809 (efficiency=0.835, discipline=1.000, absorption=0.500)
+09:41:47 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:41:47 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=66.7
+09:41:47 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+09:41:47 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:42:54 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.65 stressor=0.90 final=0.77
+09:42:54 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=7, sufficient=False
+09:42:54 [src.aura.core.readiness] INFO: US-282: Rapid confidence decline — penalty applied (accel=-0.1003)
+09:42:54 [src.aura.core.readiness] INFO: US-326: Recovery score=0.475 (efficiency=0.000, discipline=1.000, absorption=0.500)
+09:42:54 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:42:54 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=52.8
+09:42:54 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.77, override=0.80, stress=1.00)
+09:42:54 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:45:41 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.81 stressor=0.90 final=0.85
+09:45:41 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=8, sufficient=False
+09:45:41 [src.aura.core.readiness] INFO: US-282: Rapid confidence recovery — bonus applied (accel=0.1234)
+09:45:41 [src.aura.core.readiness] INFO: US-326: Recovery score=0.862 (efficiency=0.968, discipline=1.000, absorption=0.500)
+09:45:41 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:45:41 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=70.6
+09:45:41 [src.aura.core.readiness] WARNING: US-338: High readiness (70.6) with poor decision process (10.1) — verify before trading
+09:45:41 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.85, override=0.80, stress=1.00)
+09:45:41 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:47:38 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.87 stressor=0.90 final=0.88
+09:47:38 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=9, sufficient=False
+09:47:38 [src.aura.core.readiness] INFO: US-326: Recovery score=0.615 (efficiency=0.350, discipline=1.000, absorption=0.500)
+09:47:38 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:47:38 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=62.6
+09:47:38 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.88, override=0.80, stress=1.00)
+09:47:38 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:48:14 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.82 stressor=0.90 final=0.86
+09:48:14 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.0851, split_half=0.3300, composite=0.1831, samples=10, sufficient=True
+09:48:14 [src.aura.core.readiness] WARNING: US-334: Low internal consistency — alpha=0.085, reliability=0.183
+09:48:14 [src.aura.core.readiness] INFO: US-326: Recovery score=0.788 (efficiency=0.782, discipline=1.000, absorption=0.500)
+09:48:14 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:48:14 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=65.5
+09:48:14 [src.aura.core.readiness] INFO: US-344: Reliability dampener applied (reliability=0.183)
+09:48:14 [src.aura.core.readiness] WARNING: US-344: Low readiness reliability (0.183) — score may be unreliable
+09:48:14 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+09:48:14 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:48:31 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.82 stressor=0.90 final=0.86
+09:48:31 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.0848, split_half=0.3291, composite=0.1825, samples=11, sufficient=True
+09:48:31 [src.aura.core.readiness] WARNING: US-334: Low internal consistency — alpha=0.085, reliability=0.183
+09:48:31 [src.aura.core.readiness] INFO: US-326: Recovery score=0.739 (efficiency=0.659, discipline=1.000, absorption=0.500)
+09:48:31 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:48:31 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=65.2
+09:48:31 [src.aura.core.readiness] INFO: US-344: Reliability dampener applied (reliability=0.183)
+09:48:31 [src.aura.core.readiness] WARNING: US-344: Low readiness reliability (0.183) — score may be unreliable
+09:48:31 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+09:48:31 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:49:03 [src.aura.analysis.style_tracker] WARNING: High linguistic style drift detected: 1.000 > 0.5 (baseline size: 10, current snapshot variance)
+09:49:03 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.89 stressor=0.90 final=0.90
+09:49:03 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.0925, split_half=0.3447, composite=0.1934, samples=12, sufficient=True
+09:49:03 [src.aura.core.readiness] WARNING: US-334: Low internal consistency — alpha=0.093, reliability=0.193
+09:49:03 [src.aura.core.readiness] INFO: US-326: Recovery score=0.875 (efficiency=1.000, discipline=1.000, absorption=0.500)
+09:49:03 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:49:03 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=66.5
+09:49:03 [src.aura.core.readiness] INFO: US-344: Style drift penalty -4.8 (drift=1.000)
+09:49:03 [src.aura.core.readiness] WARNING: US-344: High linguistic drift (1.000) — verify emotional state
+09:49:03 [src.aura.core.readiness] INFO: US-344: Reliability dampener applied (reliability=0.193)
+09:49:03 [src.aura.core.readiness] WARNING: US-344: Low readiness reliability (0.193) — score may be unreliable
+09:49:03 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+09:49:03 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:56:12 [src.aura.analysis.style_tracker] WARNING: High linguistic style drift detected: 1.000 > 0.5 (baseline size: 10, current snapshot variance)
+09:56:12 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.83 stressor=0.65 final=0.74
+09:56:12 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.0994, split_half=0.1006, composite=0.0998, samples=13, sufficient=True
+09:56:12 [src.aura.core.readiness] WARNING: US-334: Low internal consistency — alpha=0.099, reliability=0.100
+09:56:12 [src.aura.core.readiness] INFO: US-326: Recovery score=0.494 (efficiency=0.000, discipline=1.000, absorption=0.577)
+09:56:12 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:56:12 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=60.0
+09:56:12 [src.aura.core.readiness] INFO: US-344: Style drift penalty -4.8 (drift=1.000)
+09:56:12 [src.aura.core.readiness] WARNING: US-344: High linguistic drift (1.000) — verify emotional state
+09:56:12 [src.aura.core.readiness] WARNING: US-350: Granularity penalty -3.0 (granularity=0.000) under stress
+09:56:12 [src.aura.core.readiness] INFO: US-344: Reliability dampener applied (reliability=0.100)
+09:56:12 [src.aura.core.readiness] WARNING: US-344: Low readiness reliability (0.100) — score may be unreliable
+09:56:12 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.74, override=0.80, stress=0.92)
+09:56:12 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+09:56:33 [src.aura.analysis.style_tracker] WARNING: High linguistic style drift detected: 0.539 > 0.5 (baseline size: 10, current snapshot variance)
+09:56:34 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.65 final=0.77
+09:56:34 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.2583, split_half=0.4149, composite=0.3209, samples=14, sufficient=True
+09:56:34 [src.aura.core.readiness] WARNING: US-334: Low internal consistency — alpha=0.258, reliability=0.321
+09:56:34 [src.aura.core.readiness] INFO: US-326: Recovery score=0.468 (efficiency=0.000, discipline=1.000, absorption=0.473)
+09:56:34 [src.aura.core.readiness] WARNING: US-318: statsmodels not available — STL decomposition disabled
+09:56:34 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+09:56:34 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=54.4
+09:56:34 [src.aura.core.readiness] INFO: US-344: Style drift penalty -1.1 (drift=0.539)
+09:56:34 [src.aura.core.readiness] WARNING: US-350: Granularity penalty -3.0 (granularity=0.000) under stress
+09:56:34 [src.aura.core.readiness] INFO: US-344: Reliability dampener applied (reliability=0.321)
+09:56:34 [src.aura.core.readiness] WARNING: US-344: Low readiness reliability (0.321) — score may be unreliable
+09:56:34 [src.aura.core.readiness] INFO: Readiness score: 66/100 (emotional=0.70, cognitive=0.77, override=0.80, stress=0.92)
+09:56:34 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=65.5, biases=9, risk=0.00
+10:01:02 [src.aura.cli.companion] INFO: Adaptive weights loaded — Aura will learn from outcomes
+10:01:02 [src.aura.cli.companion] INFO: ReadinessV2 model loaded — Aura will train on outcomes
+10:01:02 [src.aura.cli.companion] INFO: OverridePredictor loaded — Aura will learn override patterns
+10:01:02 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+10:01:02 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+10:01:02 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=69.3
+10:01:02 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:01:08 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.82 stressor=0.90 final=0.86
+10:01:08 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=2, sufficient=False
+10:01:08 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:01:08 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=68.7
+10:01:08 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+10:01:08 [src.aura.core.readiness] INFO: US-309: Trained adaptive weights from outcome (won=False, profit=0.0, days_old=1.1)
+10:01:08 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:01:28 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+10:01:28 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=3, sufficient=False
+10:01:28 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:01:28 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=69.3
+10:01:28 [src.aura.core.readiness] INFO: US-350: Coherence bonus +1.0 (coherence=0.806)
+10:01:28 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:01:28 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:01:43 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+10:01:43 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=4, sufficient=False
+10:01:43 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=13.0 (process=0.00, info=0.17, meta=0.00)
+10:01:43 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=13.0, readiness=69.5
+10:01:43 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:01:43 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:01:57 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+10:01:57 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=5, sufficient=False
+10:01:57 [src.aura.core.readiness] INFO: US-326: Recovery score=0.875 (efficiency=1.000, discipline=1.000, absorption=0.500)
+10:01:57 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:01:57 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=60.9
+10:01:57 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:01:57 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:02:14 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.82 stressor=0.90 final=0.86
+10:02:14 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=6, sufficient=False
+10:02:14 [src.aura.core.readiness] INFO: US-326: Recovery score=0.875 (efficiency=1.000, discipline=1.000, absorption=0.500)
+10:02:14 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:02:14 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=60.0
+10:02:14 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+10:02:14 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:02:31 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.79 stressor=0.90 final=0.84
+10:02:31 [src.aura.core.readiness] INFO: US-293: Bias penalty applied — aggregate=0.028, discipline reduced to 0.793
+10:02:31 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=7, sufficient=False
+10:02:31 [src.aura.core.readiness] INFO: US-326: Recovery score=0.875 (efficiency=1.000, discipline=1.000, absorption=0.500)
+10:02:31 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:02:31 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=59.3
+10:02:31 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.84, override=0.79, stress=1.00)
+10:02:31 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:03:15 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.86 stressor=0.90 final=0.88
+10:03:15 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=8, sufficient=False
+10:03:15 [src.aura.core.readiness] INFO: US-326: Recovery score=0.875 (efficiency=1.000, discipline=1.000, absorption=0.500)
+10:03:15 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=13.0 (process=0.00, info=0.17, meta=0.00)
+10:03:15 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=13.0, readiness=62.6
+10:03:15 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.88, override=0.80, stress=1.00)
+10:03:15 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:03:38 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+10:03:38 [src.aura.core.readiness] INFO: US-293: Bias penalty applied — aggregate=0.028, discipline reduced to 0.793
+10:03:38 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=9, sufficient=False
+10:03:38 [src.aura.core.readiness] INFO: US-326: Recovery score=0.875 (efficiency=1.000, discipline=1.000, absorption=0.500)
+10:03:38 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=15.2 (process=0.20, info=0.00, meta=0.00)
+10:03:38 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=15.2, readiness=63.6
+10:03:38 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.90, override=0.79, stress=1.00)
+10:03:38 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:04:07 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.85 stressor=0.90 final=0.87
+10:04:07 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.0595, split_half=0.2536, composite=0.1371, samples=10, sufficient=True
+10:04:07 [src.aura.core.readiness] WARNING: US-334: Low internal consistency — alpha=0.059, reliability=0.137
+10:04:07 [src.aura.core.readiness] INFO: US-326: Recovery score=0.475 (efficiency=0.000, discipline=1.000, absorption=0.500)
+10:04:07 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=16.2 (process=0.00, info=0.00, meta=0.00)
+10:04:07 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=16.2, readiness=58.8
+10:04:07 [src.aura.core.readiness] INFO: US-344: Reliability dampener applied (reliability=0.137)
+10:04:07 [src.aura.core.readiness] WARNING: US-344: Low readiness reliability (0.137) — score may be unreliable
+10:04:07 [src.aura.core.readiness] INFO: Readiness score: 64/100 (emotional=0.70, cognitive=0.87, override=0.80, stress=1.00)
+10:04:07 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=63.9, biases=9, risk=0.00
+10:04:26 [src.aura.cli.companion] INFO: Adaptive weights loaded — Aura will learn from outcomes
+10:04:26 [src.aura.cli.companion] INFO: ReadinessV2 model loaded — Aura will train on outcomes
+10:04:26 [src.aura.cli.companion] INFO: OverridePredictor loaded — Aura will learn override patterns
+10:04:26 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+10:04:26 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+10:04:26 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=69.3
+10:04:26 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:04:33 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.65 stressor=0.90 final=0.77
+10:04:33 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=2, sufficient=False
+10:04:33 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:04:33 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=67.2
+10:04:33 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.77, override=0.80, stress=1.00)
+10:04:33 [src.aura.core.readiness] INFO: US-309: Trained adaptive weights from outcome (won=False, profit=0.0, days_old=1.1)
+10:04:33 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:04:46 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+10:04:46 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=3, sufficient=False
+10:04:46 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=12)
+10:04:46 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:04:46 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=70.5
+10:04:46 [src.aura.core.readiness] WARNING: US-338: High readiness (70.5) with poor decision process (10.1) — verify before trading
+10:04:46 [src.aura.core.readiness] INFO: US-350: Coherence bonus +1.2 (coherence=0.850)
+10:04:46 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:04:46 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:04:59 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.90 stressor=0.90 final=0.90
+10:04:59 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=4, sufficient=False
+10:04:59 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=12)
+10:04:59 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:04:59 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=70.5
+10:04:59 [src.aura.core.readiness] WARNING: US-338: High readiness (70.5) with poor decision process (10.1) — verify before trading
+10:04:59 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:04:59 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:05:16 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.82 stressor=0.90 final=0.86
+10:05:16 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=5, sufficient=False
+10:05:16 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=12)
+10:05:16 [src.aura.core.readiness] INFO: US-326: Recovery score=0.808 (efficiency=0.833, discipline=1.000, absorption=0.500)
+10:05:16 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:05:16 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=59.5
+10:05:16 [src.aura.core.readiness] INFO: Readiness score: 69/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+10:05:16 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=69.3, biases=9, risk=0.00
+10:39:01 [src.aura.cli.companion] INFO: Adaptive weights loaded — Aura will learn from outcomes
+10:39:01 [src.aura.cli.companion] INFO: ReadinessV2 model loaded — Aura will train on outcomes
+10:39:01 [src.aura.cli.companion] INFO: OverridePredictor loaded — Aura will learn override patterns
+10:39:01 [src.aura.evolution.search] INFO: No evolution library found at .aura/evolution/library.json
+10:39:01 [src.aura.cli.companion] INFO: L2 Evolution engine loaded — Aura will discover new patterns
+10:39:01 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+10:39:01 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=12)
+10:39:01 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+10:39:01 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=70.5
+10:39:01 [src.aura.core.readiness] WARNING: US-338: High readiness (70.5) with poor decision process (10.0) — verify before trading
+10:39:01 [src.aura.core.readiness] INFO: Readiness score: 70/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:39:23 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.65 stressor=0.90 final=0.77
+10:39:23 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=2, sufficient=False
+10:39:23 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=12)
+10:39:23 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:39:23 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=68.7
+10:39:23 [src.aura.core.readiness] INFO: Readiness score: 70/100 (emotional=0.70, cognitive=0.77, override=0.80, stress=1.00)
+10:39:23 [src.aura.core.readiness] INFO: US-309: Trained adaptive weights from outcome (won=False, profit=0.0, days_old=1.1)
+10:39:23 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=70.5, biases=9, risk=0.00
+10:39:47 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.86 stressor=0.90 final=0.88
+10:39:47 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=3, sufficient=False
+10:39:47 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=18)
+10:39:47 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:39:47 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=70.2
+10:39:47 [src.aura.core.readiness] WARNING: US-338: High readiness (70.2) with poor decision process (10.1) — verify before trading
+10:39:47 [src.aura.core.readiness] INFO: Readiness score: 70/100 (emotional=0.70, cognitive=0.88, override=0.80, stress=1.00)
+10:39:47 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=70.5, biases=9, risk=0.00
+10:39:59 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.83 stressor=0.90 final=0.86
+10:39:59 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=4, sufficient=False
+10:39:59 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=18)
+10:39:59 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:39:59 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=69.9
+10:39:59 [src.aura.core.readiness] INFO: Readiness score: 70/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+10:39:59 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=70.5, biases=9, risk=0.00
+10:40:39 [src.aura.cli.companion] INFO: Adaptive weights loaded — Aura will learn from outcomes
+10:40:39 [src.aura.cli.companion] INFO: ReadinessV2 model loaded — Aura will train on outcomes
+10:40:39 [src.aura.cli.companion] INFO: OverridePredictor loaded — Aura will learn override patterns
+10:40:39 [src.aura.evolution.search] INFO: No evolution library found at .aura/evolution/library.json
+10:40:39 [src.aura.cli.companion] INFO: L2 Evolution engine loaded — Aura will discover new patterns
+10:40:39 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=1, sufficient=False
+10:40:39 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=18)
+10:40:39 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.0 (process=0.00, info=0.00, meta=0.00)
+10:40:39 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.0, readiness=70.5
+10:40:39 [src.aura.core.readiness] WARNING: US-338: High readiness (70.5) with poor decision process (10.0) — verify before trading
+10:40:39 [src.aura.core.readiness] INFO: Readiness score: 70/100 (emotional=0.70, cognitive=0.90, override=0.80, stress=1.00)
+10:40:45 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.82 stressor=0.90 final=0.86
+10:40:45 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=2, sufficient=False
+10:40:45 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=18)
+10:40:45 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:40:45 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=69.9
+10:40:45 [src.aura.core.readiness] INFO: Readiness score: 70/100 (emotional=0.70, cognitive=0.86, override=0.80, stress=1.00)
+10:40:45 [src.aura.core.readiness] INFO: US-309: Trained adaptive weights from outcome (won=False, profit=0.0, days_old=1.1)
+10:40:45 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=70.5, biases=9, risk=0.00
+10:40:55 [src.aura.core.readiness] INFO: US-316: Cognitive load blend — text=0.83 stressor=0.65 final=0.74
+10:40:55 [src.aura.analysis.reliability] INFO: Reliability analysis complete: alpha=0.7000, split_half=0.7000, composite=0.7000, samples=3, sufficient=False
+10:40:55 [src.aura.core.readiness] INFO: US-302: Using adaptive weights (samples=24)
+10:40:55 [src.aura.scoring.decision_quality] INFO: US-321: Decision quality scored — composite=10.1 (process=0.00, info=0.00, meta=0.00)
+10:40:55 [src.aura.core.readiness] INFO: US-338: Decision quality blended — dq=10.1, readiness=67.1
+10:40:55 [src.aura.core.readiness] WARNING: US-350: Granularity penalty -3.0 (granularity=0.000) under stress
+10:40:55 [src.aura.core.readiness] INFO: Readiness score: 70/100 (emotional=0.70, cognitive=0.74, override=0.80, stress=0.92)
+10:40:55 [src.aura.bridge.signals] INFO: US-323: Enriched outcome signal — readiness=70.5, biases=9, risk=0.00

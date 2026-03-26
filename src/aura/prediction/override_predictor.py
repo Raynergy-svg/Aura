@@ -457,6 +457,9 @@ class OverridePredictor:
             risk_sum = sum(features[2:6])  # emotional + cognitive + type + regime
             loss_prob = self._sigmoid(risk_sum * 2.0 - 0.5)
 
+        # Clamp to valid probability range [0, 1]
+        loss_prob = max(0.0, min(1.0, loss_prob))
+
         # Compute feature contributions
         contributions = {}
         for i, (name, feat_val) in enumerate(

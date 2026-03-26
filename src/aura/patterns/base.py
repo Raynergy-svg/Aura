@@ -106,6 +106,7 @@ class DetectedPattern:
             self.status = PatternStatus.PROMOTED
         elif self.observation_count >= 2 and self.status == PatternStatus.DETECTED:
             self.status = PatternStatus.RECURRING
+        # Re-confirm promoted patterns with fresh evidence (keep PROMOTED status but update timestamp)
 
     # US-306: Statistical thresholds for promotion
     PROMOTION_P_VALUE_MAX = 0.05

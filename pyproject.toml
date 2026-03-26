@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "aura"
 version = "0.1.0"
@@ -11,6 +15,10 @@ dev = ["pytest", "pytest-cov"]
 
 [project.scripts]
 aura = "src.aura.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src", "src.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

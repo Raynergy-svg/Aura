@@ -303,6 +303,12 @@ class BridgeRulesEngine:
                     "Rules engine: multiply rule '%s' on unset param '%s' — applied as set",
                     rule.rule_id, param,
                 )
+            else:
+                logger.warning(
+                    "Rules engine: unknown operator '%s' in rule '%s' — skipping",
+                    operator, rule.rule_id,
+                )
+                continue
 
             rule.triggered_count += 1
 

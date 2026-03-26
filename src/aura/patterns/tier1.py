@@ -72,7 +72,10 @@ def get_decay_weighted_confidence(pattern: "DetectedPattern", now: Optional[date
             ts = datetime.fromisoformat(evidence.timestamp.replace("Z", "+00:00"))
             days_old = max(0.0, (now - ts).total_seconds() / 86400.0)
         except (ValueError, TypeError, AttributeError):
-            days_old = 0.0  # Fresh if unparseable
+            # Corrupted timestamps should NOT be treated as fresh — assign zero weight
+            weight = 0.0
+            total_weight += weight
+            continue
 
         weight = math.exp(-EVIDENCE_DECAY_LAMBDA * days_old)
         total_weight += weight

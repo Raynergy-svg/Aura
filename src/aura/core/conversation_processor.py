@@ -43,6 +43,11 @@ STRESS_KEYWORDS: Set[str] = {
     # Overtrading / loss-related language
     "took a loss", "keep losing", "losing streak", "bad trade",
     "overtrad", "too many trades",
+    # Frustration / regret / self-blame
+    "i knew", "should have", "shouldn't have", "i can't", "can't keep",
+    "held too long", "wrong call", "my fault", "so stupid", "idiot",
+    "what was i thinking", "knew better", "lost pips", "lost 40",
+    "going against me", "went against",
 }
 
 POSITIVE_KEYWORDS: Set[str] = {
@@ -83,9 +88,11 @@ FATIGUE_KEYWORDS: Set[str] = {
 }
 
 TRADING_OVERRIDE_KEYWORDS: Set[str] = {
-    "override", "ignored buddy", "took the trade anyway", "closed early",
+    "i override", "i overrode", "overriding buddy", "override buddy",
+    "ignored buddy", "took the trade anyway", "closed early",
     "moved my stop", "changed the sl", "changed the tp", "didn't listen",
-    "went against", "manual trade", "gut feeling", "just felt like",
+    "went against", "manual trade", "gut feeling trade", "just felt like",
+    "i'm overriding", "going to override", "gonna override",
 }
 
 STRESSOR_KEYWORDS: Dict[str, str] = {
@@ -770,7 +777,15 @@ class ConversationProcessor:
             tokens, FATIGUE_KEYWORDS, message_lower
         )
         fatigue_found = len(fatigue_found_kw) > 0
-        override_found = any(kw in message_lower for kw in TRADING_OVERRIDE_KEYWORDS)
+        # Override detection — action phrases only, not questions about overrides.
+        # "I overrode Buddy" = override. "explain override" or "what is override" = not.
+        _override_question_prefixes = ("explain", "what is", "what's", "tell me about", "how does", "how do", "why does", "why do", "define")
+        _msg_is_question = any(message_lower.strip().startswith(p) for p in _override_question_prefixes) or message_lower.strip().endswith("?")
+        if _msg_is_question:
+            # Questions about overrides are NOT override actions
+            override_found = False
+        else:
+            override_found = any(kw in message_lower for kw in TRADING_OVERRIDE_KEYWORDS)
 
         # Detect stressors — US-204: use word-boundary regex to prevent
         # false positives (e.g. "parent" matching inside "apartment")
@@ -781,6 +796,9 @@ class ConversationProcessor:
 
         # --- Sentiment computation (US-281: intensity-scaled) ---
         stress_score = len(stress_found) * 0.15 * stress_intensity
+        # Override mentions compound into stress — overriding your system IS stress
+        if override_found:
+            stress_score += 0.15
         positive_score = len(positive_found) * 0.12 * positive_intensity
         fatigue_penalty = 0.15 * fatigue_intensity if fatigue_found else 0.0
 

@@ -1066,7 +1066,7 @@ class ReadinessComputer:
             "frustrated": 0.25,
             "overwhelmed": 0.15,
         }
-        emotional_score = emotional_scores.get(emotional_state.lower(), 0.5)
+        emotional_score = emotional_scores.get(str(emotional_state or "neutral").lower(), 0.5)
 
         # Cognitive load score — based on number of active stressors
         stressor_count = len(active_stressors)

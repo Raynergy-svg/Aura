@@ -175,9 +175,14 @@ class BayesianChangePointDetector:
         # New distribution: [changepoint, growth_0, growth_1, ...]
         new_log_dist = [log_cp_sum] + growth_log_probs
 
-        # Normalize (log-space)
+        # Normalize (log-space) — guard against -inf norm which would produce Inf/NaN
         log_norm = self._log_sum_exp(new_log_dist)
-        self._log_run_length_dist = [x - log_norm for x in new_log_dist]
+        if math.isinf(log_norm) and log_norm < 0:
+            # All probabilities collapsed — reset to uniform over current run lengths
+            n = len(new_log_dist)
+            self._log_run_length_dist = [math.log(1.0 / n) if n > 0 else 0.0] * n
+        else:
+            self._log_run_length_dist = [x - log_norm for x in new_log_dist]
 
         # Update per-run-length sufficient statistics
         # New r=0 starts fresh, existing ones accumulate

@@ -297,9 +297,9 @@ class PatternEngine:
         results = {}
         for tier_name, tier in [("t1", self.t1), ("t2", self.t2), ("t3", self.t3)]:
             try:
-                before_count = len(tier.get_active_patterns()) if hasattr(tier, 'get_active_patterns') else 0
+                before_count = len(tier.get_active_patterns() or []) if hasattr(tier, 'get_active_patterns') else 0
                 tier._load_patterns()
-                after_count = len(tier.get_active_patterns()) if hasattr(tier, 'get_active_patterns') else 0
+                after_count = len(tier.get_active_patterns() or []) if hasattr(tier, 'get_active_patterns') else 0
                 if after_count > 0:
                     results[tier_name] = TierReloadResult.SUCCESS
                 elif before_count > 0:

@@ -333,15 +333,20 @@ class FeedbackBridge:
             return None, BridgeReadError.PERMISSION_DENIED
 
     def _check_stale(self, path: Path) -> bool:
-        """US-305: Check if a file hasn't been updated within threshold."""
+        """US-305: Check if a file hasn't been updated within threshold.
+
+        Fails safe to True (stale) on any error — better to treat a signal
+        as stale than to pass corrupted/inaccessible data to Buddy as fresh.
+        """
         try:
             if not path.exists():
-                return False
+                return True  # Non-existent file is stale by definition
             mtime = path.stat().st_mtime
             age = datetime.now(timezone.utc).timestamp() - mtime
             return age > self.STALE_THRESHOLD_SECONDS
-        except Exception:
-            return False
+        except Exception as e:
+            logger.warning("_check_stale error for %s, assuming stale: %s", path.name, e)
+            return True
 
     def bridge_health(self) -> BridgeHealthStatus:
         """US-305: Check health of all bridge signal files."""

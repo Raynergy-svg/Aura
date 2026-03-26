@@ -1,0 +1,29 @@
+{
+  "priors": {
+    "emotional_state": {
+      "alpha": 1.0,
+      "beta": 4.900565375581137
+    },
+    "cognitive_load": {
+      "alpha": 1.0,
+      "beta": 4.900565375581137
+    },
+    "override_discipline": {
+      "alpha": 1.0,
+      "beta": 4.900565375581137
+    },
+    "stress_level": {
+      "alpha": 1.0,
+      "beta": 4.900565375581137
+    },
+    "confidence_trend": {
+      "alpha": 1.0,
+      "beta": 4.900565375581137
+    },
+    "engagement": {
+      "alpha": 1.0,
+      "beta": 4.900565375581137
+    }
+  },
+  "sample_count": 24
+}

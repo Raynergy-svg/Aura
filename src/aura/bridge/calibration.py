@@ -165,6 +165,10 @@ class CalibrationTracker:
         if len(self.aura_predictions) < MIN_SAMPLES_FOR_SCORING:
             return 0.5
         positive = sum(1 for s in self.aura_predictions if s.score > 0)
+        negative = sum(1 for s in self.aura_predictions if s.score < 0)
+        # If all scores are zero (neutral), return 0.5 — no signal either way
+        if positive == 0 and negative == 0:
+            return 0.5
         return positive / len(self.aura_predictions)
 
     def buddy_calibration_score(self) -> float:
@@ -175,6 +179,9 @@ class CalibrationTracker:
         if len(self.buddy_predictions) < MIN_SAMPLES_FOR_SCORING:
             return 0.5
         positive = sum(1 for s in self.buddy_predictions if s.score > 0)
+        negative = sum(1 for s in self.buddy_predictions if s.score < 0)
+        if positive == 0 and negative == 0:
+            return 0.5
         return positive / len(self.buddy_predictions)
 
     def is_low_calibration(self) -> bool:

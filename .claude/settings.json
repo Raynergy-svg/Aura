@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip uninstall:*)",
+      "Bash(chmod +x /Users/buddy/Documents/P-90/aura)",
+      "Bash(git stash:*)",
+      "Bash(python -m pytest tests/test_aura_companion_commands.py::TestCompanionBehavioralEdgeCases::test_emotional_state_stressed_response -q --tb=line)",
+      "Bash(aura --status)",
+      "Bash(grep -E '^Msg|^$|TRAJECTORY|Drop|PASS|WARN|^  ')",
+      "WebFetch(domain:syhya.github.io)",
+      "WebFetch(domain:evoailabs.medium.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.arxiv.org)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:www.aiworldtoday.net)",
+      "Bash(python -m pytest tests/test_evolution_search.py -v)",
+      "Bash(python -m pytest tests/test_evolution_dsl.py -v)"
+    ],
+    "additionalDirectories": [
+      "/Users/buddy/Documents/P-90/.git"
+    ]
+  }
+}

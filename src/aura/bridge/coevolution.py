@@ -85,10 +85,16 @@ def _clamp(value: float, lo: float, hi: float) -> float:
 
 
 def _apply_drift(current: float, target: float, max_drift: float) -> float:
-    """Move current toward target, capped by max_drift."""
+    """Move current toward target, capped by max_drift with damping.
+
+    Applies 0.5 damping factor when delta is within max_drift to prevent
+    oscillation between extremes (M-01 fix).
+    """
     delta = target - current
     if abs(delta) > max_drift:
         delta = max_drift if delta > 0 else -max_drift
+    else:
+        delta *= 0.5  # Damping to prevent oscillation
     return current + delta
 
 

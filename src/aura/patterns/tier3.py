@@ -647,10 +647,12 @@ class Tier3NarrativeArcDetector:
         if slope < self.trend_significance * 0.5:
             return []
 
-        # Check if stress ever "resets" (drops significantly between weeks)
+        # Check if stress ever "resets" — compare to baseline (early weeks) not just previous week.
+        # Week-over-week drops can be misleading if overall trend is still accumulating.
+        baseline = sum(smoothed[:2]) / max(len(smoothed[:2]), 1) if len(smoothed) >= 2 else smoothed[0] if smoothed else 0.0
         recovery_gaps = []
-        for i in range(1, len(smoothed)):
-            if smoothed[i] < smoothed[i - 1] * 0.7:  # 30%+ drop
+        for i in range(2, len(smoothed)):
+            if smoothed[i] < baseline * 0.7:  # 30%+ below baseline = genuine recovery
                 recovery_gaps.append(i)
 
         has_recovery = len(recovery_gaps) > 0

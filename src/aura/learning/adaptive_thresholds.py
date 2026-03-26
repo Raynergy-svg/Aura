@@ -102,7 +102,7 @@ class AdaptiveThresholdLearner:
                 for v in values:
                     # Stronger prior for candidate closest to default
                     dist = abs(v - default)
-                    if dist < step / 2 if num > 1 else True:
+                    if num <= 1 or dist < step / 2:
                         alpha, beta = 5.0, 5.0  # strong prior on default
                     else:
                         alpha, beta = 2.0, 2.0  # weak prior on alternatives
@@ -134,6 +134,12 @@ class AdaptiveThresholdLearner:
             context = "morning"  # fallback
 
         candidates = self._candidates[name][context]
+
+        # Guard against empty candidates list
+        if not candidates:
+            default = self.config[name]["default"]
+            logger.warning("US-353: No candidates for %s/%s, returning default %.3f", name, context, default)
+            return default
 
         # Check if we have enough samples
         total_samples = sum(c.sample_count for c in candidates)
