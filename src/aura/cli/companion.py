@@ -472,6 +472,8 @@ class AuraCompanion:
             from src.aura.core.mind import think, build_context
 
             outcome = self.bridge.read_outcome()
+            if not hasattr(outcome, 'to_dict'):
+                outcome = None
             recent_overrides = self.bridge.get_recent_overrides(limit=10)
 
             context = build_context(

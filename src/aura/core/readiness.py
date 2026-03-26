@@ -729,6 +729,27 @@ class ReadinessComputer:
             self._journal_reflection_scorer = JournalReflectionScorer()
         except ImportError:
             logger.debug("US-342: JournalReflectionScorer not available")
+        # US-356: Resilience tracker
+        self._resilience_tracker = None
+        try:
+            from src.aura.scoring.resilience import ResilienceTracker
+            self._resilience_tracker = ResilienceTracker()
+        except ImportError:
+            logger.debug("US-356: ResilienceTracker not available")
+        # US-357: Multi-horizon readiness forecaster
+        self._readiness_forecaster = None
+        try:
+            from src.aura.prediction.forecaster import ReadinessForecaster
+            self._readiness_forecaster = ReadinessForecaster()
+        except ImportError:
+            logger.debug("US-357: ReadinessForecaster not available")
+        # US-358: Goal-emotion coupler
+        self._goal_emotion_coupler = None
+        try:
+            from src.aura.scoring.goal_emotion import GoalEmotionCoupler
+            self._goal_emotion_coupler = GoalEmotionCoupler()
+        except ImportError:
+            logger.debug("US-358: GoalEmotionCoupler not available")
         # US-341: Bootstrap adaptive weights from bridge outcome history
         if self._adaptive_weights and not self._adaptive_weights.is_ready():
             self._bootstrap_adaptive_weights()
@@ -1033,6 +1054,7 @@ class ReadinessComputer:
         fatigue_score: float = 0.0,
         bias_interaction_penalty: float = 0.0,
         graph=None,
+        goal_alignment: float = 0.0,
     ) -> ReadinessSignal:
         """Compute the readiness score from current state.
 
@@ -1618,6 +1640,56 @@ class ReadinessComputer:
             logger.info("US-355: Bias interaction penalty=%.1f", bias_interaction_penalty)
             readiness_score = max(0.0, min(100.0, readiness_score))
 
+        # --- US-356: Resilience tracking and adjustment ---
+        resilience_score_val = 50.0
+        if self._resilience_tracker is not None:
+            try:
+                resilience_result = self._resilience_tracker.update(readiness_score)
+                resilience_score_val = resilience_result.resilience_score
+                if resilience_score_val < 30.0:
+                    readiness_score = max(0.0, readiness_score - 3.0)
+                    logger.info("US-356: Low resilience (%.1f) — penalty -3.0", resilience_score_val)
+                elif resilience_score_val > 70.0:
+                    readiness_score = min(100.0, readiness_score + 2.0)
+                    logger.info("US-356: High resilience (%.1f) — bonus +2.0", resilience_score_val)
+            except Exception as e:
+                logger.warning("US-356: Resilience tracking failed: %s", e)
+
+        # --- US-357: Multi-horizon readiness forecasting ---
+        forecast_1h_val = readiness_score
+        forecast_6h_val = readiness_score
+        forecast_24h_val = readiness_score
+        forecast_confidence_val = 0.3
+        if self._readiness_forecaster is not None:
+            try:
+                forecast_result = self._readiness_forecaster.update(readiness_score)
+                forecast_1h_val = forecast_result.forecast_1h
+                forecast_6h_val = forecast_result.forecast_6h
+                forecast_24h_val = forecast_result.forecast_24h
+                forecast_confidence_val = forecast_result.confidence
+                logger.debug("US-357: Forecast 1h=%.1f 6h=%.1f 24h=%.1f conf=%.3f",
+                             forecast_1h_val, forecast_6h_val, forecast_24h_val, forecast_confidence_val)
+            except Exception as e:
+                logger.warning("US-357: Forecasting failed: %s", e)
+
+        # --- US-358: Goal-emotion coupling adjustment ---
+        goal_alignment_applied = goal_alignment
+        if self._goal_emotion_coupler is not None and message_text:
+            try:
+                ge_result = self._goal_emotion_coupler.analyze(message_text, emotional_state)
+                goal_alignment_applied = ge_result.goal_alignment
+                logger.debug("US-358: goal_alignment=%.3f from text", goal_alignment_applied)
+            except Exception as e:
+                logger.warning("US-358: Goal-emotion coupling failed: %s", e)
+        # Apply alignment bonus/penalty
+        if goal_alignment_applied > 0.5:
+            readiness_score = min(100.0, readiness_score + 2.0)
+            logger.info("US-358: Goal approach bonus +2.0 (alignment=%.3f)", goal_alignment_applied)
+        elif goal_alignment_applied < -0.5:
+            readiness_score = max(0.0, readiness_score - 2.0)
+            logger.info("US-358: Goal avoidance penalty -2.0 (alignment=%.3f)", goal_alignment_applied)
+        readiness_score = max(0.0, min(100.0, readiness_score))
+
         # --- US-344: Reliability dampener ---
         reliability_dampened = False
         if reliability_score_val < 0.5 and self._reliability_analyzer is not None and len(self._reliability_analyzer.snapshots) >= 10:
@@ -1691,6 +1763,13 @@ class ReadinessComputer:
             "fatigue_penalty_applied": fatigue_penalty,
             "bias_interaction_penalty_applied": bias_interaction_penalty_applied,
             "regime_dampening_reduced": regime_dampening_reduced,
+            # US-356/357/358: Phase 20 state snapshot fields
+            "resilience_score": resilience_score_val,
+            "forecast_1h": forecast_1h_val,
+            "forecast_6h": forecast_6h_val,
+            "forecast_24h": forecast_24h_val,
+            "forecast_confidence": forecast_confidence_val,
+            "goal_alignment_applied": goal_alignment_applied,
         }
 
         # --- Build signal ---

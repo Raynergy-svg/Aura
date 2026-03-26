@@ -99,15 +99,21 @@ class TextReadabilityAnalyzer:
                 readability_score=0.5,
             )
 
-        # If textstat is not available, return neutral defaults
+        # If textstat is not available, compute using pure-Python fallback
         if not TEXTSTAT_AVAILABLE:
-            logger.debug("textstat unavailable; returning neutral defaults")
+            logger.debug("textstat unavailable; using pure-Python Flesch/Fog computation")
             vocab_div = self._compute_vocabulary_diversity(words)
+            flesch_reading_ease, gunning_fog = self._compute_readability_pure_python(text, words)
+            flesch_norm = max(0.0, min(1.0, flesch_reading_ease / 100.0))
+            fog_norm = max(0.0, min(1.0, 1.0 - gunning_fog / 20.0))
+            readability_score = (
+                0.4 * flesch_norm + 0.3 * fog_norm + 0.3 * vocab_div
+            )
             return ReadabilityMetrics(
-                flesch_reading_ease=50.0,
-                gunning_fog=12.0,
+                flesch_reading_ease=flesch_reading_ease,
+                gunning_fog=gunning_fog,
                 vocabulary_diversity=vocab_div,
-                readability_score=0.5,
+                readability_score=readability_score,
             )
 
         # Compute readability indices using textstat
@@ -140,6 +146,76 @@ class TextReadabilityAnalyzer:
             vocabulary_diversity=vocabulary_diversity,
             readability_score=readability_score,
         )
+
+    @staticmethod
+    def _count_syllables(word: str) -> int:
+        """Count syllables in a word using vowel-group heuristic.
+
+        Args:
+            word: Single word (will be lowercased)
+
+        Returns:
+            Syllable count (minimum 1)
+        """
+        word = word.lower().strip(".,!?;:'\"")
+        if not word:
+            return 1
+        vowels = "aeiou"
+        count = 0
+        prev_vowel = False
+        for char in word:
+            is_vowel = char in vowels
+            if is_vowel and not prev_vowel:
+                count += 1
+            prev_vowel = is_vowel
+        # Silent 'e' at end: subtract 1 if word ends in 'e' and has > 1 syllable
+        if word.endswith("e") and count > 1:
+            count -= 1
+        return max(1, count)
+
+    @staticmethod
+    def _count_sentences(text: str) -> int:
+        """Count sentences by splitting on sentence-ending punctuation.
+
+        Returns:
+            Sentence count (minimum 1)
+        """
+        import re
+        sentences = re.split(r"[.!?]+", text.strip())
+        count = sum(1 for s in sentences if s.strip())
+        return max(1, count)
+
+    def _compute_readability_pure_python(self, text: str, words: list) -> tuple:
+        """Compute Flesch Reading Ease and Gunning Fog without textstat.
+
+        Args:
+            text: Full text string
+            words: Pre-split word tokens
+
+        Returns:
+            Tuple of (flesch_reading_ease, gunning_fog) both as float
+        """
+        word_count = max(len(words), 1)
+        sentence_count = self._count_sentences(text)
+
+        # Count syllables per word
+        syllable_counts = [self._count_syllables(w) for w in words]
+        total_syllables = sum(syllable_counts)
+
+        # Flesch Reading Ease = 206.835 - 1.015*(words/sentences) - 84.6*(syllables/words)
+        asl = word_count / sentence_count  # average sentence length
+        asw = total_syllables / word_count  # average syllables per word
+        flesch = 206.835 - 1.015 * asl - 84.6 * asw
+        flesch = max(0.0, min(100.0, flesch))
+
+        # Gunning Fog Index
+        # complex words = words with 3+ syllables
+        complex_count = sum(1 for sc in syllable_counts if sc >= 3)
+        percent_complex = complex_count / word_count
+        fog = (asl + percent_complex * 100.0) * 0.4
+        fog = max(0.0, fog)
+
+        return round(flesch, 2), round(fog, 2)
 
     @staticmethod
     def _compute_vocabulary_diversity(words: list[str]) -> float:
