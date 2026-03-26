@@ -294,7 +294,11 @@ class AdaptiveWeightManager:
         raw = {}
         for name in _COMPONENT_NAMES:
             p = self._priors[name]
-            raw[name] = p["alpha"] / (p["alpha"] + p["beta"])
+            denom = p["alpha"] + p["beta"]
+            if denom < 1e-10:
+                raw[name] = _COMPONENT_WEIGHTS[name]  # Fallback to default weight on bootstrap
+            else:
+                raw[name] = p["alpha"] / denom
 
         total = sum(raw.values())
         if total <= 0:
