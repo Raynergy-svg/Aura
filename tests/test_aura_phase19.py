@@ -666,8 +666,12 @@ class TestPhase19CLICommands:
         assert "no data" in result.lower() or isinstance(result, str)
 
     def test_help_includes_new_commands(self):
-        """Unknown command should list /affect and /fatigue."""
+        """/help command should list /affect and /fatigue."""
         companion = self._make_companion()
+        # Unknown command directs to /help
         result = companion._handle_command("/unknown")
-        assert "/affect" in result
-        assert "/fatigue" in result
+        assert "/help" in result
+        # /help lists all commands including new ones
+        help_result = companion._handle_command("/help")
+        assert "/affect" in help_result
+        assert "/fatigue" in help_result

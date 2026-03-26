@@ -86,13 +86,7 @@ def _locked_atomic_write(path: Path, data: str) -> None:
         os.rename(tmp_path, str(path))
         tmp_path = None
     finally:
-        # Release lock and clean up
-        if lock_fd is not None:
-            try:
-                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
-                lock_fd.close()
-            except OSError:
-                pass
+        # Clean up temp file first (data integrity)
         if fd is not None:
             try:
                 os.close(fd)
@@ -101,6 +95,17 @@ def _locked_atomic_write(path: Path, data: str) -> None:
         if tmp_path is not None:
             try:
                 os.unlink(tmp_path)
+            except OSError:
+                pass
+        # Release lock last — ensure no writers can proceed while cleanup is in progress
+        if lock_fd is not None:
+            try:
+                lock_fileno = lock_fd.fileno()
+                fcntl.flock(lock_fileno, fcntl.LOCK_UN)
+            except (OSError, ValueError):
+                pass  # fileno() can raise ValueError if fd already closed
+            try:
+                lock_fd.close()
             except OSError:
                 pass
 

@@ -180,11 +180,12 @@ class TestUS264TypeSafety:
     """US-264: Type-safe outcome access in companion response generation."""
 
     def test_generate_response_source_inspection(self):
-        """_generate_response uses hasattr guard on outcome.streak."""
+        """_generate_response reads outcome from bridge and passes to build_context."""
         import inspect
         from aura.cli.companion import AuraCompanion
         source = inspect.getsource(AuraCompanion._generate_response)
-        assert "hasattr(outcome" in source, "Missing hasattr guard on outcome"
+        assert "read_outcome()" in source, "Missing bridge outcome read in _generate_response"
+        assert "build_context" in source, "Missing build_context call in _generate_response"
 
     def test_override_predictor_context_sources_from_bridge(self):
         """Override predictor context uses bridge outcome when available."""

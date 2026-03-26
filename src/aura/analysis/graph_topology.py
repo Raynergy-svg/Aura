@@ -102,7 +102,7 @@ class GraphTopologyAnalyzer:
             GraphTopologyFeatures with 6 normalized metrics + composite score
         """
         if not self._nx_available:
-            logger.warning("graphx unavailable, returning neutral topology features")
+            logger.warning("networkx unavailable, returning neutral topology features")
             return self._neutral_features()
 
         if graph is None or graph._conn is None:

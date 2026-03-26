@@ -222,8 +222,8 @@ class DecisionQualityScorer:
                 compound = self._vader.polarity_scores(text)["compound"]
                 if compound > 0.3:
                     score = min(1.0, score + 0.1)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("VADER boost failed for %s: %s", dimension_name, e)
 
         return score
 

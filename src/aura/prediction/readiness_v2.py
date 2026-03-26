@@ -240,7 +240,8 @@ class ReadinessModelV2:
         if ood_features:
             result = result * 0.6 + 0.5 * 0.4  # Blend towards 0.5
 
-        return result
+        # Clamp to [0.0, 1.0] to ensure score*100 stays within bridge contract bounds
+        return max(0.0, min(1.0, result))
 
     def _compute_contributions(
         self, features: List[float]
@@ -258,7 +259,11 @@ class ReadinessModelV2:
         else:
             # V1 contributions (only base features)
             for name in list(_V1_WEIGHTS.keys()):
-                idx = V2_FEATURE_NAMES.index(name)
+                try:
+                    idx = V2_FEATURE_NAMES.index(name)
+                except ValueError:
+                    logger.warning("Feature name '%s' not found in V2_FEATURE_NAMES — skipping contribution", name)
+                    continue
                 contributions[name] = features[idx] * _V1_WEIGHTS[name]
 
         return contributions

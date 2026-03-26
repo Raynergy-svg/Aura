@@ -294,6 +294,13 @@ class SelfModelValidator:
                 all_nodes.extend(graph.get_nodes_by_type(node_type))
         except (sqlite3.Error, ImportError, AttributeError) as e:
             logger.warning("US-231: _check_stale_nodes failed to query nodes: %s", e)
+            issues.append(ValidationIssue(
+                severity="warning",
+                category="stale",
+                description=f"Stale node check itself failed: {e}",
+                auto_remediated=False,
+                remediation_action="Investigate DB connectivity",
+            ))
             return issues, fixes
 
         stale_nodes = []
@@ -360,6 +367,8 @@ class SelfModelValidator:
 
         try:
             conn = graph._conn
+            if conn is None:
+                return issues, fixes
             # US-232: LEFT JOIN replaces O(n²) NOT IN subqueries with O(n) join
             orphans = conn.execute("""
                 SELECT n.id, n.node_type, n.label, n.confidence
@@ -615,7 +624,21 @@ class SelfModelValidator:
         """Save validation report to disk."""
         try:
             report_path = self._report_dir / "latest_report.json"
-            report_path.write_text(json.dumps(report.to_dict(), indent=2))
+            # Atomic write: temp file + rename to prevent corruption
+            import tempfile
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=str(self._report_dir), suffix=".tmp", prefix=".report_"
+            )
+            try:
+                os.write(tmp_fd, json.dumps(report.to_dict(), indent=2).encode("utf-8"))
+                os.fsync(tmp_fd)
+                os.close(tmp_fd)
+                os.rename(tmp_path, str(report_path))
+            except Exception:
+                os.close(tmp_fd) if tmp_fd else None
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                raise
 
             # Also append to history
             history_path = self._report_dir / "validation_history.jsonl"

@@ -134,6 +134,10 @@ class ReadinessReliabilityAnalyzer:
         even_scores = []  # indices 1, 3, 5
 
         for snapshot in recent:
+            if len(snapshot) < 2:
+                odd_scores.append(snapshot[0] if snapshot else 0.0)
+                even_scores.append(snapshot[0] if snapshot else 0.0)
+                continue
             odd_mean = sum(snapshot[i] for i in range(0, len(snapshot), 2)) / (len(snapshot) // 2 + len(snapshot) % 2)
             even_mean = sum(snapshot[i] for i in range(1, len(snapshot), 2)) / (len(snapshot) // 2)
             odd_scores.append(odd_mean)

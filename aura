@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Aura CLI wrapper — runs the Aura Human Intelligence Engine.
+# This script allows running Aura without pip install by setting PYTHONPATH.
+#
+# Usage:
+#   ./aura              # Interactive mode
+#   ./aura --demo       # Run demo scenario
+#   ./aura --status     # Show bridge status
+#   ./aura --help       # Show help
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
+exec python -m src.aura.cli.main "$@"

@@ -475,16 +475,21 @@ class TestPhase18CLICommands:
         assert isinstance(result, str)
 
     def test_help_includes_new_commands(self):
+        """New commands are accessible and /help lists them."""
         companion = self._make_companion()
+        # Unknown command directs to /help
         result = companion._handle_command("/unknown_cmd_xyz")
-        assert "/granularity" in result
-        assert "/coherence" in result
+        assert "/help" in result
+        # /help command itself lists all commands
+        help_result = companion._handle_command("/help")
+        assert "/granularity" in help_result
+        assert "/coherence" in help_result
 
     def test_all_commands_in_help(self):
         companion = self._make_companion()
-        result = companion._handle_command("/notacommand")
+        help_result = companion._handle_command("/help")
         for cmd in ["/granularity", "/coherence", "/flexibility", "/journal"]:
-            assert cmd in result
+            assert cmd in help_result
 
 
 if __name__ == "__main__":

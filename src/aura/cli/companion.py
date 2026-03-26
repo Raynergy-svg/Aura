@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.aura.core.conversation_processor import ConversationProcessor, ConversationSignals
-from src.aura.core.readiness import ReadinessComputer, ReadinessSignal
+from src.aura.core.readiness import ReadinessComputer, ReadinessSignal, AdaptiveWeightManager
 from src.aura.core.self_model import (
     SelfModelGraph,
     GraphNode,
@@ -34,6 +34,7 @@ from src.aura.core.self_model import (
 from src.aura.bridge.signals import FeedbackBridge, OutcomeSignal
 from src.aura.patterns.engine import PatternEngine
 from src.aura.persistence import atomic_write_json  # Fix M-01: needed for atomic onboarding profile write
+from src.aura.cli.brand import get_brand, THEMES, RESET as BRAND_RESET, BOLD as BRAND_BOLD
 
 # Phase 3 prediction models (lazy import — may not be available)
 try:
@@ -74,13 +75,44 @@ class AuraCompanion:
         bridge_dir: Optional[Path] = None,
     ):
         self.processor = ConversationProcessor()
+
+        # --- Wire up ALL learning models so Aura evolves through use ---
+        aura_root = (bridge_dir or Path(".aura/bridge")).parent
+        models_dir = aura_root / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+
+        # Adaptive component weights — learns which readiness components
+        # actually predict trade outcomes (persisted to disk)
+        adaptive_weights: Optional[AdaptiveWeightManager] = None
+        try:
+            adaptive_weights = AdaptiveWeightManager(
+                persist_path=aura_root / "adaptive_weights.json"
+            )
+            logger.info("Adaptive weights loaded — Aura will learn from outcomes")
+        except Exception as e:
+            logger.debug(f"AdaptiveWeightManager not available: {e}")
+
+        # ReadinessModelV2 — ML model that learns to predict readiness
+        # from outcomes (persisted to disk)
+        v2_model = None
+        if _HAS_PREDICTION:
+            try:
+                v2_model = ReadinessModelV2(
+                    model_path=models_dir / "readiness_v2.json"
+                )
+                logger.info("ReadinessV2 model loaded — Aura will train on outcomes")
+            except Exception as e:
+                logger.debug(f"ReadinessModelV2 not available: {e}")
+
         self.readiness = ReadinessComputer(
-            signal_path=(bridge_dir or Path(".aura/bridge")) / "readiness_signal.json"
+            signal_path=(bridge_dir or Path(".aura/bridge")) / "readiness_signal.json",
+            v2_model=v2_model,
+            adaptive_weights=adaptive_weights,
         )
         self.graph = SelfModelGraph(db_path=db_path)
         self.bridge = FeedbackBridge(bridge_dir=bridge_dir)
         self.pattern_engine = PatternEngine(
-            patterns_dir=(bridge_dir or Path(".aura/bridge")).parent / "patterns",
+            patterns_dir=aura_root / "patterns",
             bridge_dir=bridge_dir,
         )
         self._conversation_id = f"conv_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
@@ -95,20 +127,40 @@ class AuraCompanion:
         # US-311: Track staleness warnings
         self._staleness_warned = False
 
-        # Phase 3: Prediction models
+        # Phase 3: Prediction models (also wire override predictor to readiness)
         self._override_predictor: Optional[Any] = None
-        self._readiness_v2: Optional[Any] = None
+        self._readiness_v2 = v2_model
         if _HAS_PREDICTION:
             try:
-                models_dir = (bridge_dir or Path(".aura/bridge")).parent / "models"
                 self._override_predictor = OverridePredictor(
                     model_path=models_dir / "override_predictor.json"
                 )
-                self._readiness_v2 = ReadinessModelV2(
-                    model_path=models_dir / "readiness_v2.json"
-                )
+                # Wire override predictor into readiness so it influences the score
+                self.readiness._override_predictor = self._override_predictor
+                logger.info("OverridePredictor loaded — Aura will learn override patterns")
             except Exception as e:
-                logger.debug(f"Prediction models not available: {e}")
+                logger.debug(f"OverridePredictor not available: {e}")
+
+        # L2 Evolution: Pattern DSL + evolutionary search
+        self._evolver = None
+        self._signal_history: List[Dict[str, Any]] = []
+        self._evolution_interval = 10  # Run evolution every N messages
+        self._message_count_since_evolution = 0
+        try:
+            from src.aura.evolution.search import PatternEvolver
+            evolution_dir = aura_root / "evolution"
+            evolution_dir.mkdir(parents=True, exist_ok=True)
+            self._evolver = PatternEvolver(
+                population_size=30,
+                max_generations=20,
+                library_path=evolution_dir / "library.json",
+            )
+            self._evolver.load_library()
+            if not self._evolver._population:
+                self._evolver.seed_population()
+            logger.info("L2 Evolution engine loaded — Aura will discover new patterns")
+        except Exception as e:
+            logger.debug(f"Evolution engine not available: {e}")
 
     def _needs_onboarding(self) -> bool:
         """Check if self-model is empty and needs onboarding."""
@@ -134,15 +186,15 @@ class AuraCompanion:
         All responses are processed through ConversationProcessor for
         emotional signal extraction even during onboarding.
         """
-        print(f"\n{CYAN}{BOLD}╔══════════════════════════════════════════╗{RESET}")
-        print(f"{CYAN}{BOLD}║       Welcome to Aura — First Setup      ║{RESET}")
-        print(f"{CYAN}{BOLD}╚══════════════════════════════════════════╝{RESET}")
+        brand = get_brand()
         print()
-        print(f"I'm Aura, your self-awareness companion. I work alongside Buddy")
-        print(f"to help you trade better by understanding yourself better.")
+        brand.print_header("Welcome — First Setup", style="heavy")
         print()
-        print(f"Let me get to know you a bit. This takes about 2 minutes.")
-        print(f"{DIM}(You can skip any question by pressing Enter){RESET}")
+        print(brand.render_info("I'm Aura, your self-awareness companion. I work alongside Buddy"))
+        print(brand.render_info("to help you trade better by understanding yourself better."))
+        print()
+        print(brand.render_dim("Let me get to know you a bit. This takes about 2 minutes."))
+        print(brand.render_dim("(You can skip any question by pressing Enter)"))
         print()
 
         onboarding_data: Dict[str, Any] = {}
@@ -289,9 +341,12 @@ class AuraCompanion:
         # Compute initial readiness baseline
         self._update_readiness()
 
-        print(f"\n{GREEN}{BOLD}Onboarding complete!{RESET}")
-        print(f"Your self-model has been seeded with {self.graph.get_stats()['total_nodes']} nodes.")
-        print(f"The more we talk, the better I understand your patterns.\n")
+        brand = get_brand()
+        print()
+        brand.print_success(f"Onboarding complete!")
+        brand.print_info(f"Your self-model has been seeded with {self.graph.get_stats()['total_nodes']} nodes.")
+        brand.print_dim("The more we talk, the better I understand your patterns.")
+        print()
 
     def start_session(self) -> None:
         """Initialize a new conversation session."""
@@ -309,21 +364,20 @@ class AuraCompanion:
                   f"Readiness will default to neutral (50/100) until onboarding finishes.{RESET}")
             print(f"{DIM}Run /onboard to restart onboarding.{RESET}\n")
 
-        print(f"\n{CYAN}{BOLD}╔══════════════════════════════════════════╗{RESET}")
-        print(f"{CYAN}{BOLD}║             AURA  ·  Eve                 ║{RESET}")
-        print(f"{CYAN}{BOLD}╚══════════════════════════════════════════╝{RESET}")
-        print()
+        brand = get_brand()
 
         # Show bridge status if Buddy is running
         bridge_status = self.bridge.get_bridge_status()
         if bridge_status["outcome_signal"]["available"]:
             outcome = self.bridge.read_outcome()
             if outcome:
-                streak_color = GREEN if outcome.streak == "winning" else (RED if outcome.streak == "losing" else YELLOW)
-                print(f"{DIM}Buddy is active — PnL today: {outcome.pnl_today:+.2f}, "
-                      f"regime: {outcome.regime}, streak: {streak_color}{outcome.streak}{RESET}{RESET}")
+                print(brand.render_buddy_badge(
+                    connected=True,
+                    regime=outcome.regime,
+                    pnl=outcome.pnl_today
+                ))
         else:
-            print(f"{DIM}Buddy not detected — readiness signals will be cached for when it starts{RESET}")
+            print(brand.render_buddy_badge(connected=False))
 
         # Compute initial readiness
         self._update_readiness()
@@ -344,6 +398,10 @@ class AuraCompanion:
 
         # US-237: Each stage wrapped in try-except for session resilience.
         # A crash in one stage should not kill the interactive session.
+
+        # Brand-aware thinking indicator — single Claude Code-style
+        brand = get_brand()
+        brand.print_thinking("thinking")
 
         # Stage 1: Process through conversation processor
         try:
@@ -413,6 +471,35 @@ class AuraCompanion:
         except Exception as e:
             logger.debug("US-309: Training check error: %s", e)
 
+        # Stage 4.65: L2 Evolution — record signal snapshot + periodic evolution run
+        if self._evolver:
+            try:
+                from src.aura.evolution.dsl import build_context_from_signals
+                outcome_data = self.bridge.read_outcome()
+                overrides_data = self.bridge.get_recent_overrides(limit=50) if hasattr(self.bridge, 'get_recent_overrides') else []
+                ctx = build_context_from_signals(
+                    readiness=readiness,
+                    signals=signals,
+                    outcome=outcome_data,
+                    overrides=overrides_data,
+                )
+                self._signal_history.append(ctx)
+                # Cap history to prevent unbounded growth
+                if len(self._signal_history) > 500:
+                    self._signal_history = self._signal_history[-500:]
+
+                self._message_count_since_evolution += 1
+                if self._message_count_since_evolution >= self._evolution_interval:
+                    self._message_count_since_evolution = 0
+                    if len(self._signal_history) >= 10:
+                        self._evolver.evolve_one_generation(self._signal_history)
+                        adopted = self._evolver.get_adoptable_patterns(min_precision=0.6, min_support=3)
+                        if adopted:
+                            logger.info("L2: Evolved %d adoptable patterns", len(adopted))
+                        self._evolver.save_library()
+            except Exception as e:
+                logger.debug("L2 evolution step failed (non-fatal): %s", e)
+
         # Stage 4.7: US-311: Check for stale bridge signals
         if not self._staleness_warned:
             try:
@@ -445,6 +532,9 @@ class AuraCompanion:
             logger.error("US-237: _generate_response failed: %s", e)
             response = "I'm here and listening. Could you tell me more about how you're feeling?"
 
+        # Clear thinking indicator before showing response
+        brand.clear_thinking()
+
         # Log assistant response (non-critical)
         try:
             self.processor.process_message(response, role="assistant")
@@ -459,6 +549,14 @@ class AuraCompanion:
             self._message_history = self._message_history[-self.MAX_MESSAGE_HISTORY:]
 
         return response
+
+    def get_signal_state(self):
+        """Return current signal data for the dashboard panel.
+
+        Returns (readiness, signals, active_stressors) tuple for brand
+        rendering. Safe to call after process_input().
+        """
+        return self._latest_readiness, self._latest_signals, list(self._active_stressors)
 
     def _generate_response(
         self,
@@ -504,51 +602,53 @@ class AuraCompanion:
         signals: ConversationSignals,
         readiness: ReadinessSignal,
     ) -> str:
-        """Fallback template responses when LLM is unavailable."""
+        """Fallback template responses when LLM is unavailable.
+
+        Design: warm, direct, human. Not a chatbot, not a therapist.
+        Short and grounded — like Claude, not like Clippy.
+        """
+        brand = get_brand()
         parts: List[str] = []
 
-        # Acknowledge emotional state if notable
-        if signals.emotional_state == "stressed":
-            parts.append(
-                "I can hear that you're dealing with a lot right now. "
-                "Let's talk through it."
-            )
-        elif signals.emotional_state == "fatigued":
-            parts.append(
-                "It sounds like you're running low on energy. "
-                "That matters for your decision-making today."
-            )
-        elif signals.emotional_state == "anxious":
-            parts.append(
-                "I'm picking up some tension in what you're sharing. "
-                "That's worth being aware of."
-            )
-        elif signals.emotional_state == "energized":
-            parts.append(
-                "You sound like you're in a good headspace. That's great."
-            )
+        # ── Acknowledge emotional state naturally ──
+        state = signals.emotional_state
+        score = readiness.readiness_score if readiness else 50
 
-        # Override detection
+        if state == "stressed":
+            if score < 35:
+                parts.append("You're carrying a lot right now. Maybe step away for a bit — you'll see it clearer after.")
+            else:
+                parts.append("I can feel the stress in what you're saying. Let's just be aware of it.")
+        elif state == "fatigued":
+            parts.append("You sound tired. Rest isn't weakness — it's how you stay sharp.")
+        elif state == "anxious":
+            if score < 40:
+                parts.append("There's a lot of tension right now. When you're this wound up, even good setups feel like traps.")
+            else:
+                parts.append("Something feels a little tight. Worth noticing before you move on anything.")
+        elif state == "energized":
+            if score > 70:
+                parts.append("You sound good today. Something shifted — in a good way.")
+            else:
+                parts.append("Energy's up, but something underneath isn't quite settled yet. Just keep that in the background.")
+
+        # ── Override detection — this is critical ──
         if signals.override_mentioned:
             recent_overrides = self.bridge.get_recent_overrides(limit=10)
             losing_overrides = [o for o in recent_overrides if o.outcome == "loss"]
             if len(losing_overrides) >= 2:
+                loss_pct = len(losing_overrides) / len(recent_overrides) * 100 if recent_overrides else 0
                 parts.append(
-                    f"I notice you're talking about overriding Buddy's signals. "
-                    f"Over the last few sessions, {len(losing_overrides)} of your "
-                    f"overrides resulted in losses. Let's think about what's driving "
-                    f"that impulse right now."
+                    f"You're overriding Buddy again. {len(losing_overrides)} of your "
+                    f"last {len(recent_overrides)} overrides were losses ({loss_pct:.0f}%). "
+                    f"What's different this time?"
                 )
             else:
-                parts.append(
-                    "You mentioned overriding Buddy. I'll log that — understanding "
-                    "when and why you override helps us both learn."
-                )
+                parts.append("Logging the override. These patterns tell us a lot about when your gut helps and when it doesn't.")
 
             # Phase 3: Override prediction warning
             if self._override_predictor:
                 try:
-                    # US-264: Source confidence/vote from bridge outcome when available
                     _outcome = self.bridge.read_outcome()
                     _conf = getattr(_outcome, "confidence_at_time", 0.5) if _outcome else 0.5
                     _vote = getattr(_outcome, "weighted_vote_at_time", 0.5) if _outcome else 0.5
@@ -563,49 +663,50 @@ class AuraCompanion:
                     }
                     prediction = self._override_predictor.predict_loss_probability(context)
                     if prediction.loss_probability >= 0.60:
+                        wc = brand.c("warning")
                         parts.append(
-                            f"\n{YELLOW}⚠ Override risk: {prediction.loss_probability:.0%} "
-                            f"predicted loss probability. {prediction.recommendation}{RESET}"
+                            f"\n{wc}Override risk: {prediction.loss_probability:.0%} "
+                            f"predicted loss. {prediction.recommendation}{BRAND_RESET}"
                         )
                 except Exception:
                     pass
 
-        # Stressor acknowledgment
+        # ── Stressor acknowledgment ──
         if signals.detected_stressors:
             stressor_text = ", ".join(signals.detected_stressors)
+            parts.append(f"I'm noticing some things in the background — {stressor_text}. These affect you even when you don't feel it.")
+
+        # ── Readiness context — gentle, not clinical ──
+        if readiness and score < 35:
+            wc = brand.c("warning")
             parts.append(
-                f"I'm noting {stressor_text} as active stressors. "
-                f"These can affect your trading readiness even when you don't feel it."
+                f"\n{wc}Your readiness is low right now. "
+                f"Buddy is being careful on your behalf — lighter sizing, fewer entries.{BRAND_RESET}"
+            )
+        elif readiness and score < 55:
+            dc = brand.c("text_dim")
+            parts.append(
+                f"\n{dc}You're not quite yourself right now. Buddy's adjusting accordingly.{BRAND_RESET}"
             )
 
-        # Readiness impact
-        if readiness.readiness_score < 40:
-            parts.append(
-                f"\n{YELLOW}⚠ Your readiness score is {readiness.readiness_score:.0f}/100. "
-                f"Buddy will reduce position sizes and may block new trades "
-                f"until your cognitive state improves.{RESET}"
-            )
-        elif readiness.readiness_score < 60:
-            parts.append(
-                f"\n{DIM}Readiness: {readiness.readiness_score:.0f}/100 — "
-                f"Buddy is using reduced position sizes.{RESET}"
-            )
-
-        # Default conversational response
+        # ── Default — warm presence, not robotic ──
         if not parts:
-            parts.append(
-                "I'm listening. Tell me what's on your mind — "
-                "it all helps me understand how you're doing."
-            )
+            msg_count = len(self._message_history)
+            if msg_count == 0:
+                parts.append("Hey. I'm here. What's going on?")
+            elif msg_count < 4:
+                parts.append("I hear you. Go on.")
+            else:
+                parts.append("Still here.")
 
-        # Buddy outcome context — US-264: type-safe access
+        # ── Buddy context if relevant ──
         outcome = self.bridge.read_outcome()
         if outcome and "trading" in signals.topics:
             if hasattr(outcome, "streak") and outcome.streak == "losing":
+                dc = brand.c("text_dim")
                 parts.append(
-                    f"\n{DIM}Buddy context: Currently on a losing streak. "
-                    f"PnL today: {outcome.pnl_today:+.2f}. "
-                    f"7-day win rate: {outcome.win_rate_7d:.0%}.{RESET}"
+                    f"\n{dc}Buddy's been in a rough stretch too. "
+                    f"That might be coloring things.{BRAND_RESET}"
                 )
 
         return "\n".join(parts)
@@ -847,10 +948,102 @@ class AuraCompanion:
             return self._cmd_affect()
         elif cmd == "/fatigue":
             return self._cmd_fatigue()
+        elif cmd.startswith("/theme"):
+            return self._cmd_theme(cmd)
+        elif cmd == "/help":
+            return self._cmd_help()
         elif cmd == "/quit":
             return "__QUIT__"
         else:
-            return f"Unknown command: {cmd}. Available: /status /bridge /bridge-status /bridge-repair /readiness /graph /patterns /validate /rules /predict /coach /insights /quality /anomalies /recovery /regimes /reliability /style /flexibility /journal /weights /granularity /coherence /negotiate /calibration /affect /fatigue /quit"
+            brand = get_brand()
+            return f"{brand.c('warning')}Unknown command: {cmd}{BRAND_RESET}\n\n  Type {brand.c('primary')}/help{BRAND_RESET} for all available commands."
+
+    def _cmd_theme(self, cmd: str) -> str:
+        """Handle /theme command — list or switch themes."""
+        brand = get_brand()
+        parts = cmd.strip().split()
+        if len(parts) == 1:
+            # Just /theme — show list
+            return brand.render_theme_list()
+        theme_name = parts[1].lower()
+        if brand.set_theme(theme_name):
+            # Re-fetch brand to get new colors
+            brand = get_brand()
+            lines = []
+            lines.append(brand.render_success(f"Theme switched to {brand.theme.display_name}"))
+            lines.append("")
+            lines.append(f"  {brand.c('primary')}Primary{BRAND_RESET}  "
+                         f"{brand.c('secondary')}Secondary{BRAND_RESET}  "
+                         f"{brand.c('accent')}Accent{BRAND_RESET}  "
+                         f"{brand.c('success')}Success{BRAND_RESET}  "
+                         f"{brand.c('warning')}Warning{BRAND_RESET}  "
+                         f"{brand.c('error')}Error{BRAND_RESET}")
+            return "\n".join(lines)
+        else:
+            available = ", ".join(THEMES.keys())
+            return brand.render_error(f"Unknown theme: {theme_name}\n  Available: {available}")
+
+    def _cmd_help(self) -> str:
+        """Show branded help with all available commands."""
+        brand = get_brand()
+        p = brand.c("primary")
+        s = brand.c("secondary")
+        a = brand.c("accent")
+        d = brand.c("text_dim")
+        r = BRAND_RESET
+        b = BRAND_BOLD
+
+        sections = {
+            "Awareness": [
+                ("/status", "Current Aura status overview"),
+                ("/readiness", "Readiness score and components"),
+                ("/affect", "Affect dynamics and emotional state"),
+                ("/fatigue", "Decision fatigue tracking"),
+            ],
+            "Intelligence": [
+                ("/patterns", "Pattern detection (T1/T2/T3 tiers)"),
+                ("/insights", "Cross-domain insights"),
+                ("/predict", "ML predictions (readiness, override risk)"),
+                ("/quality", "Decision quality assessment"),
+                ("/anomalies", "Anomaly detection"),
+                ("/coach", "Coaching recommendations"),
+            ],
+            "Bridge (Buddy)": [
+                ("/bridge", "Bridge status and signals"),
+                ("/bridge-status", "Detailed bridge diagnostics"),
+                ("/bridge-repair", "Attempt bridge repair"),
+                ("/negotiate", "Negotiation protocol"),
+                ("/calibration", "Calibration loop status"),
+            ],
+            "Analysis": [
+                ("/graph", "Self-model graph stats"),
+                ("/rules", "Active bridge rules"),
+                ("/regimes", "Market regime tracking"),
+                ("/recovery", "Recovery plan status"),
+                ("/style", "Trading style analysis"),
+                ("/flexibility", "Adaptive flexibility metrics"),
+                ("/reliability", "Signal reliability"),
+                ("/coherence", "System coherence"),
+                ("/journal", "Session journal"),
+                ("/weights", "Component weights"),
+                ("/granularity", "Granularity controls"),
+            ],
+            "System": [
+                ("/theme", "List themes  ·  /theme <name> to switch"),
+                ("/help", "This help screen"),
+                ("/quit", "End session"),
+            ],
+        }
+
+        lines = [brand.render_header("Commands", style="heavy")]
+        for section_name, commands in sections.items():
+            lines.append(f"  {a}▸ {p}{b}{section_name}{r}")
+            for cmd_name, desc in commands:
+                lines.append(f"    {s}{cmd_name:<18}{r} {d}{desc}{r}")
+            lines.append("")
+
+        lines.append(f"  {d}Or just type naturally — I'm always listening.{r}")
+        return "\n".join(lines)
 
     def _cmd_status(self) -> str:
         """Show current Aura status."""
@@ -2071,5 +2264,4 @@ class AuraCompanion:
             messages=self._message_history[-20:],  # Keep last 20 messages
         )
 
-        print(f"\n{DIM}Session ended. Self-model updated.{RESET}")
         self.graph.close()
