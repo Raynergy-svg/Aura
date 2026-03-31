@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from src.aura.analysis.readability import TextReadabilityAnalyzer, ReadabilityMetrics
+
 
 # ============================================================
 # US-356: Resilience Score Computation
@@ -549,3 +551,331 @@ class TestUS361Integration:
         from src.aura.core.behavioral_profile import BehavioralProfile, ProfileEntry
         # All imports succeeded
         assert True
+
+# ---------------------------------------------------------------------------
+# Phase 20 Integration Debt Cleanup Tests
+# US-359: Pure-Python textstat fallback
+# ---------------------------------------------------------------------------
+class TestUS359ReadabilityFallback:
+    """US-359: Pure-Python textstat fallback distinguishes easy vs complex text."""
+
+    def setup_method(self):
+        self.analyzer = TextReadabilityAnalyzer()
+
+    def test_simple_text_high_readability(self):
+        text = "The cat sat on the mat. The dog ran fast. I like pie."
+        result = self.analyzer.analyze(text)
+        assert result.readability_score > 0.5, f"Simple text should score > 0.5, got {result.readability_score}"
+
+    def test_complex_text_low_readability(self):
+        text = (
+            "The epistemological implications of poststructuralist hermeneutics "
+            "necessitate a comprehensive reconceptualization of ontological paradigms "
+            "within interdisciplinary phenomenological frameworks and methodological praxeologies."
+        )
+        result = self.analyzer.analyze(text)
+        assert result.readability_score < 0.5, f"Complex text should score < 0.5, got {result.readability_score}"
+
+    def test_simple_vs_complex_ordering(self):
+        simple = "I eat food. She drinks water. We run fast."
+        complex_text = (
+            "Quintessential poststructuralist methodologies dismantle epistemological "
+            "constructs through hermeneutical deconstruction of metaphysical phenomena."
+        )
+        r_simple = self.analyzer.analyze(simple)
+        r_complex = self.analyzer.analyze(complex_text)
+        assert r_simple.readability_score > r_complex.readability_score
+
+    def test_empty_text_returns_neutral(self):
+        result = self.analyzer.analyze("")
+        assert result.readability_score == 0.5
+
+    def test_short_text_returns_neutral(self):
+        result = self.analyzer.analyze("cat sat")
+        assert result.readability_score == 0.5
+
+    def test_vocabulary_diversity_computed(self):
+        text = "the quick brown fox jumps over the lazy dog"
+        result = self.analyzer.analyze(text)
+        assert result.vocabulary_diversity > 0.0
+
+    def test_flesch_approximation_reasonable(self):
+        text = "I like pie. She likes cake. We eat food."
+        result = self.analyzer.analyze(text)
+        assert result.flesch_reading_ease >= 0.0
+
+    def test_gunning_fog_approximation(self):
+        simple = "I eat food. She drinks water."
+        result = self.analyzer.analyze(simple)
+        assert 0.0 <= result.gunning_fog <= 20.0
+
+    def test_estimate_syllables_monosyllabic(self):
+        assert TextReadabilityAnalyzer._estimate_syllables("cat") == 1
+
+    def test_estimate_syllables_polysyllabic(self):
+        result = TextReadabilityAnalyzer._estimate_syllables("education")
+        assert result >= 3, f"education should have >= 3 syllables, got {result}"
+
+
+# ---------------------------------------------------------------------------
+# US-356: DecisionFatigueIndex wired into ReadinessComputer
+# ---------------------------------------------------------------------------
+class TestUS356DecisionFatigueWired:
+    """US-356 (Phase20): DecisionFatigueIndex is instantiated in ReadinessComputer."""
+
+    def test_readiness_computer_has_decision_fatigue_index(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        assert hasattr(rc, "_decision_fatigue_index")
+
+    def test_decision_fatigue_index_is_instantiated(self):
+        from src.aura.core.readiness import ReadinessComputer
+        from src.aura.scoring.decision_fatigue import DecisionFatigueIndex
+        rc = ReadinessComputer()
+        assert isinstance(rc._decision_fatigue_index, DecisionFatigueIndex)
+
+    def test_sentiment_history_tracked(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        assert hasattr(rc, "_sentiment_history")
+        assert isinstance(rc._sentiment_history, list)
+
+    def test_complexity_history_tracked(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        assert hasattr(rc, "_complexity_history")
+        assert isinstance(rc._complexity_history, list)
+
+    def test_compute_updates_sentiment_history(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        initial_len = len(rc._sentiment_history)
+        rc.compute(emotional_state="calm")
+        assert len(rc._sentiment_history) > initial_len
+
+    def test_compute_updates_complexity_history(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        initial_len = len(rc._complexity_history)
+        rc.compute(emotional_state="calm")
+        assert len(rc._complexity_history) > initial_len
+
+    def test_external_fatigue_score_accepted(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        sig = rc.compute(emotional_state="calm", fatigue_score=0.9)
+        assert 0.0 <= sig.readiness_score <= 100.0
+
+    def test_internal_fatigue_used_when_not_provided(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        rc.compute(emotional_state="calm")
+        assert len(rc._sentiment_history) >= 1
+
+
+# ---------------------------------------------------------------------------
+# US-357: BiasInteractionScorer wired into ReadinessComputer
+# ---------------------------------------------------------------------------
+class TestUS357BiasInteractionWired:
+    """US-357 (Phase20): BiasInteractionScorer is instantiated in ReadinessComputer."""
+
+    def test_readiness_computer_has_bias_interaction_scorer(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        assert hasattr(rc, "_bias_interaction_scorer")
+
+    def test_bias_interaction_scorer_instantiated(self):
+        from src.aura.core.readiness import ReadinessComputer
+        from src.aura.scoring.bias_interactions import BiasInteractionScorer
+        rc = ReadinessComputer()
+        assert isinstance(rc._bias_interaction_scorer, BiasInteractionScorer)
+
+    def test_bias_interaction_auto_computed_from_bias_scores(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        dangerous_bias_scores = {"confirmation_bias": 0.9, "anchoring": 0.9}
+        sig = rc.compute(emotional_state="calm", bias_scores=dangerous_bias_scores)
+        assert 0.0 <= sig.readiness_score <= 100.0
+
+    def test_external_penalty_accepted(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        sig = rc.compute(emotional_state="calm", bias_interaction_penalty=8.0)
+        assert 0.0 <= sig.readiness_score <= 100.0
+
+    def test_no_penalty_empty_bias_scores(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        sig = rc.compute(emotional_state="calm", bias_scores={})
+        assert 0.0 <= sig.readiness_score <= 100.0
+
+    def test_scorer_score_method_works(self):
+        from src.aura.scoring.bias_interactions import BiasInteractionScorer
+        scorer = BiasInteractionScorer()
+        result = scorer.score({"confirmation_bias": 0.8, "anchoring": 0.8})
+        assert result.interaction_penalty > 0.0
+
+    def test_scorer_returns_zero_for_no_biases(self):
+        from src.aura.scoring.bias_interactions import BiasInteractionScorer
+        scorer = BiasInteractionScorer()
+        result = scorer.score({})
+        assert result.interaction_penalty == 0.0
+
+    def test_scorer_no_crash_on_partial_biases(self):
+        from src.aura.scoring.bias_interactions import BiasInteractionScorer
+        scorer = BiasInteractionScorer()
+        result = scorer.score({"confirmation_bias": 0.3})
+        assert result.interaction_penalty >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# US-358: AdaptiveThresholdLearner wired into ReadinessComputer
+# ---------------------------------------------------------------------------
+class TestUS358AdaptiveThresholdWired:
+    """US-358 (Phase20): AdaptiveThresholdLearner is instantiated in ReadinessComputer."""
+
+    def test_readiness_computer_has_threshold_learner(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        assert hasattr(rc, "_threshold_learner")
+
+    def test_threshold_learner_instantiated(self):
+        from src.aura.core.readiness import ReadinessComputer
+        from src.aura.learning.adaptive_thresholds import AdaptiveThresholdLearner
+        rc = ReadinessComputer()
+        assert isinstance(rc._threshold_learner, AdaptiveThresholdLearner)
+
+    def test_threshold_context_tracked(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        assert hasattr(rc, "_threshold_context")
+        assert rc._threshold_context in ("morning", "afternoon", "evening", "night")
+
+    def test_last_threshold_used_populated_after_compute(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        rc.compute(emotional_state="calm")
+        assert len(rc._last_threshold_used) > 0
+
+    def test_threshold_keys_include_required(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        rc.compute(emotional_state="calm")
+        keys = set(rc._last_threshold_used.keys())
+        required = {"tilt", "override_risk", "style_drift", "granularity"}
+        assert keys >= required
+
+    def test_posteriors_updated_after_compute(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        initial_stats = rc._threshold_learner.get_stats("tilt", rc._threshold_context)
+        initial_samples = initial_stats["total_samples"] if initial_stats else 0
+        for _ in range(5):
+            rc.compute(emotional_state="calm")
+        new_stats = rc._threshold_learner.get_stats("tilt", rc._threshold_context)
+        new_samples = new_stats["total_samples"] if new_stats else 0
+        assert new_samples > initial_samples
+
+    def test_get_context_maps_hours(self):
+        from src.aura.learning.adaptive_thresholds import AdaptiveThresholdLearner
+        assert AdaptiveThresholdLearner.get_context(6) == "morning"
+        assert AdaptiveThresholdLearner.get_context(14) == "afternoon"
+        assert AdaptiveThresholdLearner.get_context(20) == "evening"
+        assert AdaptiveThresholdLearner.get_context(2) == "night"
+
+    def test_compute_with_drift_score_no_crash(self):
+        from src.aura.core.readiness import ReadinessComputer
+        rc = ReadinessComputer()
+        sig = rc.compute(emotional_state="calm", style_drift_score=0.5)
+        assert 0.0 <= sig.readiness_score <= 100.0
+
+
+# ---------------------------------------------------------------------------
+# US-360: AuraCompanion wiring
+# ---------------------------------------------------------------------------
+class TestUS360CompanionWiring:
+    """US-360 (Phase20): DecisionFatigueIndex and BiasInteractionScorer wired into AuraCompanion."""
+
+    def test_companion_has_decision_fatigue_index(self):
+        from src.aura.cli.companion import AuraCompanion
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            companion = AuraCompanion(db_path=tmp / "graph.db", bridge_dir=tmp / "bridge")
+            assert hasattr(companion, "_decision_fatigue_index")
+
+    def test_companion_has_bias_interaction_scorer(self):
+        from src.aura.cli.companion import AuraCompanion
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            companion = AuraCompanion(db_path=tmp / "graph.db", bridge_dir=tmp / "bridge")
+            assert hasattr(companion, "_bias_interaction_scorer")
+
+    def test_companion_decision_fatigue_index_is_instantiated(self):
+        from src.aura.cli.companion import AuraCompanion
+        from src.aura.scoring.decision_fatigue import DecisionFatigueIndex
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            companion = AuraCompanion(db_path=tmp / "graph.db", bridge_dir=tmp / "bridge")
+            assert isinstance(companion._decision_fatigue_index, DecisionFatigueIndex)
+
+    def test_companion_bias_interaction_scorer_is_instantiated(self):
+        from src.aura.cli.companion import AuraCompanion
+        from src.aura.scoring.bias_interactions import BiasInteractionScorer
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            companion = AuraCompanion(db_path=tmp / "graph.db", bridge_dir=tmp / "bridge")
+            assert isinstance(companion._bias_interaction_scorer, BiasInteractionScorer)
+
+    def test_companion_has_sentiment_history(self):
+        from src.aura.cli.companion import AuraCompanion
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            companion = AuraCompanion(db_path=tmp / "graph.db", bridge_dir=tmp / "bridge")
+            assert hasattr(companion, "_companion_sentiment_history")
+            assert isinstance(companion._companion_sentiment_history, list)
+
+    def test_companion_update_readiness_passes_fatigue(self):
+        from src.aura.cli.companion import AuraCompanion
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            companion = AuraCompanion(db_path=tmp / "graph.db", bridge_dir=tmp / "bridge")
+            captured = {}
+            original_compute = companion.readiness.compute
+            def mock_compute(*args, **kwargs):
+                captured.update(kwargs)
+                return original_compute(*args, **kwargs)
+            companion.readiness.compute = mock_compute
+            companion._update_readiness()
+            assert "fatigue_score" in captured
+            assert "bias_interaction_penalty" in captured
+
+    def test_companion_update_readiness_passes_bias_penalty(self):
+        from src.aura.cli.companion import AuraCompanion
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            companion = AuraCompanion(db_path=tmp / "graph.db", bridge_dir=tmp / "bridge")
+            captured = {}
+            original_compute = companion.readiness.compute
+            def mock_compute(*args, **kwargs):
+                captured.update(kwargs)
+                return original_compute(*args, **kwargs)
+            companion.readiness.compute = mock_compute
+            companion._update_readiness()
+            assert "bias_interaction_penalty" in captured
+
+    def test_companion_no_crash_on_none_signals(self):
+        from src.aura.cli.companion import AuraCompanion
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            companion = AuraCompanion(db_path=tmp / "graph.db", bridge_dir=tmp / "bridge")
+            # Should not raise
+            companion._update_readiness()
+

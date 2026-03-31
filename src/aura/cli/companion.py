@@ -162,6 +162,36 @@ class AuraCompanion:
         except Exception as e:
             logger.debug(f"Evolution engine not available: {e}")
 
+        # US-360: DecisionFatigueIndex for companion-level fatigue tracking
+        self._decision_fatigue_index = None
+        try:
+            from src.aura.scoring.decision_fatigue import DecisionFatigueIndex
+            self._decision_fatigue_index = DecisionFatigueIndex()
+            logger.debug("US-360: DecisionFatigueIndex loaded in AuraCompanion")
+        except ImportError:
+            logger.debug("US-360: DecisionFatigueIndex not available in AuraCompanion")
+
+        # US-360: BiasInteractionScorer for companion-level penalty tracking
+        self._bias_interaction_scorer = None
+        try:
+            from src.aura.scoring.bias_interactions import BiasInteractionScorer
+            self._bias_interaction_scorer = BiasInteractionScorer()
+            logger.debug("US-360: BiasInteractionScorer loaded in AuraCompanion")
+        except ImportError:
+            logger.debug("US-360: BiasInteractionScorer not available in AuraCompanion")
+
+        # US-360: Sentiment history for DecisionFatigueIndex
+        self._companion_sentiment_history: List[float] = []
+
+        # US-361: Load threshold state from bridge on startup
+        _threshold_path = (bridge_dir or Path(".aura/bridge")) / "threshold_state.json"
+        if _threshold_path.exists():
+            try:
+                self.readiness.load_threshold_state(_threshold_path)
+                logger.info("US-361: Threshold state loaded from bridge on startup")
+            except Exception as e:
+                logger.debug("US-361: Could not load threshold state: %s", e)
+
     def _needs_onboarding(self) -> bool:
         """Check if self-model is empty and needs onboarding."""
         stats = self.graph.get_stats()
@@ -468,6 +498,11 @@ class AuraCompanion:
                     if trained:
                         self._last_trained_outcome_ts = outcome_ts
                         self._outcome_cache.append(outcome if isinstance(outcome, dict) else {"trade_won": getattr(outcome, "trade_won", False)})
+                    # US-361: Also update AdaptiveThresholdLearner posteriors from outcome
+                    try:
+                        self.readiness.update_thresholds_from_outcome(outcome)
+                    except Exception as _te:
+                        logger.debug("US-361: Threshold outcome update error: %s", _te)
         except Exception as e:
             logger.debug("US-309: Training check error: %s", e)
 
@@ -762,6 +797,32 @@ class AuraCompanion:
             logger.info("Affect stuck detected: valence=%.3f, inertia=%.3f",
                         signals.affect_valence, signals.affect_inertia)
 
+        # US-360: Compute fatigue_score from DecisionFatigueIndex
+        fatigue_score = 0.0
+        if self._decision_fatigue_index is not None and signals is not None:
+            try:
+                # Accumulate sentiment in companion history
+                _sent_proxy = max(0.0, min(1.0, 1.0 - (signals.sentiment_score + 1.0) / 2.0))
+                self._companion_sentiment_history.append(_sent_proxy)
+                if len(self._companion_sentiment_history) > 50:
+                    self._companion_sentiment_history = self._companion_sentiment_history[-50:]
+                fatigue_result = self._decision_fatigue_index.update(
+                    sentiment=_sent_proxy,
+                )
+                # DecisionFatigueIndex composite is 0-100; convert to 0-1 for compute()
+                fatigue_score = fatigue_result.composite / 100.0
+            except Exception as e:
+                logger.debug("US-360: DecisionFatigueIndex update failed in companion: %s", e)
+
+        # US-360: Compute bias_interaction_penalty from BiasInteractionScorer
+        bias_interaction_penalty = 0.0
+        if self._bias_interaction_scorer is not None and bias_scores:
+            try:
+                interaction_result = self._bias_interaction_scorer.score(bias_scores)
+                bias_interaction_penalty = interaction_result.interaction_penalty
+            except Exception as e:
+                logger.debug("US-360: BiasInteractionScorer failed in companion: %s", e)
+
         readiness = self.readiness.compute(
             emotional_state=signals.emotional_state if signals else "neutral",
             stress_keywords=stress_keywords,
@@ -776,6 +837,8 @@ class AuraCompanion:
             coherence_score=coherence_score,
             affect_volatility=affect_volatility,
             affect_stuck=affect_stuck,
+            fatigue_score=fatigue_score,
+            bias_interaction_penalty=bias_interaction_penalty,
         )
         self._latest_readiness = readiness
 
@@ -2263,5 +2326,12 @@ class AuraCompanion:
             readiness_impact=self._latest_readiness.readiness_score if self._latest_readiness else 0,
             messages=self._message_history[-20:],  # Keep last 20 messages
         )
+
+        # US-361: Persist AdaptiveThresholdLearner state to bridge on session end
+        try:
+            self.readiness.save_threshold_state()
+            logger.debug("US-361: Threshold state saved on session end")
+        except Exception as e:
+            logger.debug("US-361: Could not save threshold state on end_session: %s", e)
 
         self.graph.close()

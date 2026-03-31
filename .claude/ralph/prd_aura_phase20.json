@@ -1,0 +1,43 @@
+{
+  "phase": 20,
+  "title": "Phase 20: Integration Debt Cleanup",
+  "description": "Wire DecisionFatigueIndex, BiasInteractionScorer, AdaptiveThresholdLearner into ReadinessComputer; fix textstat fallback; wire Phase 19 features into companion; add threshold persistence + outcome feedback loop.",
+  "user_stories": [
+    {
+      "id": "US-356",
+      "title": "Wire DecisionFatigueIndex into ReadinessComputer",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "id": "US-357",
+      "title": "Wire BiasInteractionScorer into ReadinessComputer",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "id": "US-358",
+      "title": "Wire AdaptiveThresholdLearner into ReadinessComputer",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "id": "US-359",
+      "title": "Pure-Python textstat fallback in TextReadabilityAnalyzer",
+      "status": "passed",
+      "tests": 10
+    },
+    {
+      "id": "US-360",
+      "title": "Wire DecisionFatigueIndex and BiasInteractionScorer into AuraCompanion",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "id": "US-361",
+      "title": "AdaptiveThresholdLearner persistence and outcome feedback loop",
+      "status": "passed",
+      "tests": 8
+    }
+  ]
+}

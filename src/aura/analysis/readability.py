@@ -65,7 +65,7 @@ class TextReadabilityAnalyzer:
         if not TEXTSTAT_AVAILABLE:
             logger.warning(
                 "TextReadabilityAnalyzer initialized without textstat library; "
-                "will return neutral defaults"
+                "will use pure-Python fallback"
             )
 
     def analyze(self, text: str) -> ReadabilityMetrics:
@@ -157,10 +157,10 @@ class TextReadabilityAnalyzer:
         Returns:
             Syllable count (minimum 1)
         """
-        word = word.lower().strip(".,!?;:'\"")
+        word = word.lower().strip(".,!?;:'\"-")
         if not word:
             return 1
-        vowels = "aeiou"
+        vowels = "aeiouy"
         count = 0
         prev_vowel = False
         for char in word:
@@ -169,6 +169,28 @@ class TextReadabilityAnalyzer:
                 count += 1
             prev_vowel = is_vowel
         # Silent 'e' at end: subtract 1 if word ends in 'e' and has > 1 syllable
+        if word.endswith("e") and count > 1:
+            count -= 1
+        return max(1, count)
+
+    # US-359: Alias for test compatibility
+    @staticmethod
+    def _estimate_syllables(word: str) -> int:
+        """Estimate syllable count (alias for _count_syllables).
+
+        US-359: Added as alias so both name variants work in tests.
+        """
+        word = word.lower().strip(".,;:!?\"'()-")
+        if not word:
+            return 1
+        vowels = "aeiouy"
+        count = 0
+        prev_vowel = False
+        for ch in word:
+            is_vowel = ch in vowels
+            if is_vowel and not prev_vowel:
+                count += 1
+            prev_vowel = is_vowel
         if word.endswith("e") and count > 1:
             count -= 1
         return max(1, count)

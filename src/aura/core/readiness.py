@@ -729,27 +729,56 @@ class ReadinessComputer:
             self._journal_reflection_scorer = JournalReflectionScorer()
         except ImportError:
             logger.debug("US-342: JournalReflectionScorer not available")
-        # US-356: Resilience tracker
+        # US-356 (prior): Resilience tracker
         self._resilience_tracker = None
         try:
             from src.aura.scoring.resilience import ResilienceTracker
             self._resilience_tracker = ResilienceTracker()
         except ImportError:
-            logger.debug("US-356: ResilienceTracker not available")
-        # US-357: Multi-horizon readiness forecaster
+            logger.debug("US-356 (prior): ResilienceTracker not available")
+        # US-357 (prior): Multi-horizon readiness forecaster
         self._readiness_forecaster = None
         try:
             from src.aura.prediction.forecaster import ReadinessForecaster
             self._readiness_forecaster = ReadinessForecaster()
         except ImportError:
-            logger.debug("US-357: ReadinessForecaster not available")
-        # US-358: Goal-emotion coupler
+            logger.debug("US-357 (prior): ReadinessForecaster not available")
+        # US-358 (prior): Goal-emotion coupler
         self._goal_emotion_coupler = None
         try:
             from src.aura.scoring.goal_emotion import GoalEmotionCoupler
             self._goal_emotion_coupler = GoalEmotionCoupler()
         except ImportError:
-            logger.debug("US-358: GoalEmotionCoupler not available")
+            logger.debug("US-358 (prior): GoalEmotionCoupler not available")
+        # Phase 20 US-356: DecisionFatigueIndex — auto-computes fatigue from sentiment/complexity history
+        self._decision_fatigue_index = None
+        try:
+            from src.aura.scoring.decision_fatigue import DecisionFatigueIndex
+            self._decision_fatigue_index = DecisionFatigueIndex()
+            logger.debug("Phase20 US-356: DecisionFatigueIndex wired into ReadinessComputer")
+        except ImportError:
+            logger.debug("Phase20 US-356: DecisionFatigueIndex not available")
+        # Phase 20 US-356: Sentiment and complexity history for DecisionFatigueIndex
+        self._sentiment_history: List[float] = []
+        self._complexity_history: List[float] = []
+        # Phase 20 US-357: BiasInteractionScorer — auto-computes penalty from bias_scores
+        self._bias_interaction_scorer = None
+        try:
+            from src.aura.scoring.bias_interactions import BiasInteractionScorer
+            self._bias_interaction_scorer = BiasInteractionScorer()
+            logger.debug("Phase20 US-357: BiasInteractionScorer wired into ReadinessComputer")
+        except ImportError:
+            logger.debug("Phase20 US-357: BiasInteractionScorer not available")
+        # Phase 20 US-358: AdaptiveThresholdLearner — learns personalized thresholds
+        self._threshold_learner = None
+        self._threshold_context: str = "morning"  # updated each compute() call
+        self._last_threshold_used: Dict[str, float] = {}
+        try:
+            from src.aura.learning.adaptive_thresholds import AdaptiveThresholdLearner
+            self._threshold_learner = AdaptiveThresholdLearner()
+            logger.debug("Phase20 US-358: AdaptiveThresholdLearner wired into ReadinessComputer")
+        except ImportError:
+            logger.debug("Phase20 US-358: AdaptiveThresholdLearner not available")
         # US-341: Bootstrap adaptive weights from bridge outcome history
         if self._adaptive_weights and not self._adaptive_weights.is_ready():
             self._bootstrap_adaptive_weights()
@@ -1075,6 +1104,35 @@ class ReadinessComputer:
         active_stressors = active_stressors or []
         recent_override_events = recent_override_events or []
 
+        # --- US-358: Determine time-of-day context for adaptive thresholds ---
+        import time as _time_for_ctx
+        _current_hour = datetime.now(timezone.utc).hour
+        if self._threshold_learner is not None:
+            try:
+                from src.aura.learning.adaptive_thresholds import AdaptiveThresholdLearner
+                self._threshold_context = AdaptiveThresholdLearner.get_context(_current_hour)
+                _tilt_threshold = self._threshold_learner.get_threshold("tilt", self._threshold_context)
+                _override_risk_threshold = self._threshold_learner.get_threshold("override_risk", self._threshold_context)
+                _style_drift_threshold = self._threshold_learner.get_threshold("style_drift", self._threshold_context)
+                _granularity_low_threshold = self._threshold_learner.get_threshold("granularity", self._threshold_context)
+                self._last_threshold_used = {
+                    "tilt": _tilt_threshold,
+                    "override_risk": _override_risk_threshold,
+                    "style_drift": _style_drift_threshold,
+                    "granularity": _granularity_low_threshold,
+                }
+            except Exception as e:
+                logger.debug("US-358: AdaptiveThresholdLearner threshold retrieval failed: %s", e)
+                _tilt_threshold = self.TILT_PENALTY_FACTOR
+                _override_risk_threshold = self.OVERRIDE_RISK_THRESHOLD
+                _style_drift_threshold = 0.4
+                _granularity_low_threshold = 0.3
+        else:
+            _tilt_threshold = self.TILT_PENALTY_FACTOR
+            _override_risk_threshold = self.OVERRIDE_RISK_THRESHOLD
+            _style_drift_threshold = 0.4
+            _granularity_low_threshold = 0.3
+
         # --- Compute individual components ---
 
         # Emotional state score
@@ -1288,9 +1346,44 @@ class ReadinessComputer:
             readiness_score = min(100.0, readiness_score + self.ACCEL_BONUS * 100)
             logger.info("US-282: Rapid confidence recovery — bonus applied (accel=%.4f)", confidence_acceleration)
 
-        # --- US-283: Decision fatigue adjustment ---
-        # Use provided fatigue_score if given (US-355), else compute from events
-        if fatigue_score == 0.0:  # Default value, not provided
+        # --- US-283/US-356: Decision fatigue adjustment ---
+        # US-356: Update DecisionFatigueIndex with current sentiment/complexity signals
+        if self._decision_fatigue_index is not None:
+            # Derive sentiment proxy from emotional_score (inverted: calm=0.9 → low fatigue signal)
+            _sentiment_proxy = 1.0 - emotional_score  # high emotional distress → high fatigue signal
+            # Derive complexity proxy from cognitive_load_score (inverted: high load → low score → high complexity)
+            _complexity_proxy = 1.0 - cognitive_load_score
+            self._sentiment_history.append(_sentiment_proxy)
+            self._complexity_history.append(_complexity_proxy)
+            if len(self._sentiment_history) > 50:
+                self._sentiment_history = self._sentiment_history[-50:]
+            if len(self._complexity_history) > 50:
+                self._complexity_history = self._complexity_history[-50:]
+            # Only use internal fatigue if external not provided
+            if fatigue_score == 0.0:
+                try:
+                    fatigue_result = self._decision_fatigue_index.update(
+                        sentiment=_sentiment_proxy,
+                        complexity=_complexity_proxy,
+                    )
+                    # DecisionFatigueIndex.composite is 0-100; normalize to 0-1 for legacy path
+                    fatigue_score = fatigue_result.composite / 100.0
+                    logger.debug("US-356: DecisionFatigueIndex fatigue=%.3f (composite=%.1f)",
+                                 fatigue_score, fatigue_result.composite)
+                except Exception as e:
+                    logger.warning("US-356: DecisionFatigueIndex update failed: %s", e)
+                    fatigue_score = self.compute_fatigue_score(recent_override_events)
+            else:
+                # Update index even if external score provided, so history is maintained
+                try:
+                    self._decision_fatigue_index.update(
+                        sentiment=_sentiment_proxy,
+                        complexity=_complexity_proxy,
+                    )
+                except Exception as e:
+                    logger.debug("US-356: DecisionFatigueIndex history update failed: %s", e)
+        elif fatigue_score == 0.0:
+            # Legacy path — no DecisionFatigueIndex available
             fatigue_score = self.compute_fatigue_score(recent_override_events)
         # Convert computed fatigue (0-1 scale) to 0-100 if needed
         if fatigue_score <= 1.0:
@@ -1316,8 +1409,10 @@ class ReadinessComputer:
             logger.warning("US-304/US-308: Tilt detection error: %s", e)
             tilt_score = 0.0
         if tilt_score > 0:
-            readiness_score = max(0.0, readiness_score * (1.0 - self.TILT_PENALTY_FACTOR * tilt_score))
-            logger.info("US-304/US-308: Tilt penalty applied — tilt_score=%.3f", tilt_score)
+            # US-358: Use adaptive tilt threshold (default TILT_PENALTY_FACTOR=0.4)
+            effective_tilt_factor = _tilt_threshold if self._threshold_learner is not None else self.TILT_PENALTY_FACTOR
+            readiness_score = max(0.0, readiness_score * (1.0 - effective_tilt_factor * tilt_score))
+            logger.info("US-304/US-308: Tilt penalty applied — tilt_score=%.3f (threshold=%.3f)", tilt_score, effective_tilt_factor)
 
         # --- US-314: Direct cognitive bias penalty ---
         bias_penalty_applied = 0.0
@@ -1346,10 +1441,12 @@ class ReadinessComputer:
                     ctx['confidence_trend'] = confidence_trend
                     override_loss_risk = predictor.predict_loss_probability(ctx)
                     override_loss_risk = max(0.0, min(1.0, override_loss_risk))
-                    if override_loss_risk > self.OVERRIDE_RISK_THRESHOLD:
+                    # US-358: Use adaptive override_risk threshold
+                    effective_override_threshold = _override_risk_threshold if self._threshold_learner is not None else self.OVERRIDE_RISK_THRESHOLD
+                    if override_loss_risk > effective_override_threshold:
                         readiness_score = max(0.0, readiness_score - self.OVERRIDE_RISK_PENALTY)
-                        logger.info("US-317: Override risk penalty — risk=%.2f > threshold=%.2f, penalty=%.1f",
-                                    override_loss_risk, self.OVERRIDE_RISK_THRESHOLD, self.OVERRIDE_RISK_PENALTY)
+                        logger.info("US-317: Override risk penalty — risk=%.2f > threshold=%.2f (adaptive), penalty=%.1f",
+                                    override_loss_risk, effective_override_threshold, self.OVERRIDE_RISK_PENALTY)
             except Exception as e:
                 logger.warning("US-317: Override predictor error: %s", e)
                 override_loss_risk = 0.0
@@ -1572,28 +1669,32 @@ class ReadinessComputer:
             except Exception as e:
                 logger.warning("US-340: Flexibility scoring failed: %s", e)
 
-        # --- US-344: Style drift penalty ---
+        # --- US-344/US-358: Style drift penalty with adaptive threshold ---
         style_drift_penalty_applied = False
-        if style_drift_score > 0.4:
-            drift_penalty = min(5.0, (style_drift_score - 0.4) * 8.0)
+        # US-358: Use adaptive style_drift threshold (default 0.4)
+        effective_drift_threshold = _style_drift_threshold if self._threshold_learner is not None else 0.4
+        if style_drift_score > effective_drift_threshold:
+            drift_penalty = min(5.0, (style_drift_score - effective_drift_threshold) * 8.0)
             readiness_score = max(0.0, readiness_score - drift_penalty)
             style_drift_penalty_applied = True
-            logger.info("US-344: Style drift penalty -%.1f (drift=%.3f)", drift_penalty, style_drift_score)
+            logger.info("US-344/US-358: Style drift penalty -%.1f (drift=%.3f, threshold=%.3f)", drift_penalty, style_drift_score, effective_drift_threshold)
             if style_drift_score > 0.6:
                 logger.warning("US-344: High linguistic drift (%.3f) — verify emotional state", style_drift_score)
 
-        # --- US-350: Emotional granularity bonus/penalty ---
+        # --- US-350/US-358: Emotional granularity bonus/penalty with adaptive threshold ---
         granularity_bonus_applied = 0.0
+        # US-358: Use adaptive granularity threshold (default 0.3 for low end)
+        effective_gran_low = _granularity_low_threshold if self._threshold_learner is not None else 0.3
         if granularity_score > 0.6:
             granularity_bonus = min(3.0, (granularity_score - 0.6) * 7.5)
             readiness_score = min(100.0, readiness_score + granularity_bonus)
             granularity_bonus_applied = granularity_bonus
             logger.info("US-350: Granularity bonus +%.1f (granularity=%.3f)", granularity_bonus, granularity_score)
-        elif granularity_score < 0.3 and (active_stressors or emotional_state.lower() in ["stressed", "anxious", "frustrated", "overwhelmed", "angry"]):
-            granularity_penalty = min(3.0, (0.3 - granularity_score) * 10.0)
+        elif granularity_score < effective_gran_low and (active_stressors or emotional_state.lower() in ["stressed", "anxious", "frustrated", "overwhelmed", "angry"]):
+            granularity_penalty = min(3.0, (effective_gran_low - granularity_score) * 10.0)
             readiness_score = max(0.0, readiness_score - granularity_penalty)
             granularity_bonus_applied = -granularity_penalty
-            logger.warning("US-350: Granularity penalty -%.1f (granularity=%.3f) under stress", granularity_penalty, granularity_score)
+            logger.warning("US-350/US-358: Granularity penalty -%.1f (granularity=%.3f, threshold=%.3f) under stress", granularity_penalty, granularity_score, effective_gran_low)
 
         readiness_score = max(0.0, min(100.0, readiness_score))
 
@@ -1632,12 +1733,23 @@ class ReadinessComputer:
             logger.info("US-355: Decision fatigue active (%.1f) — penalty=%.1f", fatigue_score_normalized, fatigue_penalty)
         readiness_score = max(0.0, min(100.0, readiness_score))
 
-        # --- US-355: Bias interaction penalty (on top of existing) ---
+        # --- US-355/US-357: Bias interaction penalty (on top of existing) ---
+        # US-357: Auto-compute bias_interaction_penalty from BiasInteractionScorer when not provided
+        if bias_interaction_penalty == 0.0 and bias_scores and self._bias_interaction_scorer is not None:
+            try:
+                interaction_result = self._bias_interaction_scorer.score(bias_scores)
+                bias_interaction_penalty = interaction_result.interaction_penalty
+                if bias_interaction_penalty > 0:
+                    logger.debug("US-357: BiasInteractionScorer computed penalty=%.2f (%d active pairs)",
+                                 bias_interaction_penalty, interaction_result.total_pair_count)
+            except Exception as e:
+                logger.warning("US-357: BiasInteractionScorer failed: %s", e)
+                bias_interaction_penalty = 0.0
         bias_interaction_penalty_applied = 0.0
         if bias_interaction_penalty > 0:
             readiness_score -= bias_interaction_penalty
             bias_interaction_penalty_applied = bias_interaction_penalty
-            logger.info("US-355: Bias interaction penalty=%.1f", bias_interaction_penalty)
+            logger.info("US-355/US-357: Bias interaction penalty=%.1f", bias_interaction_penalty)
             readiness_score = max(0.0, min(100.0, readiness_score))
 
         # --- US-356: Resilience tracking and adjustment ---
@@ -1772,6 +1884,28 @@ class ReadinessComputer:
             "goal_alignment_applied": goal_alignment_applied,
         }
 
+        # --- US-358: Update AdaptiveThresholdLearner posteriors based on readiness outcome ---
+        if self._threshold_learner is not None and self._last_threshold_used:
+            try:
+                # Good outcome = readiness > 60, bad outcome = readiness < 40, neutral in between
+                if readiness_score > 60.0:
+                    _threshold_outcome = 1.0
+                elif readiness_score < 40.0:
+                    _threshold_outcome = 0.0
+                else:
+                    _threshold_outcome = (readiness_score - 40.0) / 20.0  # linear 0→1 over 40-60 range
+                for _thresh_name, _thresh_val in self._last_threshold_used.items():
+                    self._threshold_learner.update(
+                        name=_thresh_name,
+                        context=self._threshold_context,
+                        threshold_used=_thresh_val,
+                        outcome=_threshold_outcome,
+                    )
+                logger.debug("US-358: Updated adaptive threshold posteriors — outcome=%.2f, context=%s",
+                             _threshold_outcome, self._threshold_context)
+            except Exception as e:
+                logger.debug("US-358: AdaptiveThresholdLearner posterior update failed: %s", e)
+
         # --- Build signal ---
         signal = ReadinessSignal(
             readiness_score=readiness_score,
@@ -1896,6 +2030,100 @@ class ReadinessComputer:
         logger.info("US-309: Trained adaptive weights from outcome (won=%s, profit=%.1f, days_old=%.1f)",
                     trade_won, profit, days_old)
         return True
+
+    def save_threshold_state(self, path: Optional[Path] = None) -> bool:
+        """US-361: Persist AdaptiveThresholdLearner state to disk.
+
+        Args:
+            path: Override save path. Defaults to .aura/bridge/threshold_state.json
+
+        Returns:
+            True if saved successfully, False otherwise.
+        """
+        if self._threshold_learner is None:
+            return False
+        save_path = path or (self.signal_path.parent / "threshold_state.json")
+        try:
+            self._threshold_learner.save_state(Path(save_path))
+            logger.info("US-361: Threshold state saved to %s", save_path)
+            return True
+        except Exception as e:
+            logger.warning("US-361: Failed to save threshold state: %s", e)
+            return False
+
+    def load_threshold_state(self, path: Optional[Path] = None) -> bool:
+        """US-361: Load AdaptiveThresholdLearner state from disk.
+
+        Args:
+            path: Override load path. Defaults to .aura/bridge/threshold_state.json
+
+        Returns:
+            True if loaded successfully, False otherwise.
+        """
+        if self._threshold_learner is None:
+            return False
+        load_path = path or (self.signal_path.parent / "threshold_state.json")
+        try:
+            result = self._threshold_learner.load_state(Path(load_path))
+            if result:
+                logger.info("US-361: Threshold state loaded from %s", load_path)
+            return result
+        except Exception as e:
+            logger.warning("US-361: Failed to load threshold state: %s", e)
+            return False
+
+    def update_thresholds_from_outcome(self, outcome_signal) -> bool:
+        """US-361: Update AdaptiveThresholdLearner posteriors from bridge outcome signal.
+
+        Reads success from outcome_signal and updates threshold posteriors.
+
+        Args:
+            outcome_signal: Dict or OutcomeSignal with 'success' or 'trade_won' field.
+
+        Returns:
+            True if update was performed, False otherwise.
+        """
+        if self._threshold_learner is None or not self._last_threshold_used:
+            return False
+        try:
+            if isinstance(outcome_signal, dict):
+                success = outcome_signal.get("success", outcome_signal.get("trade_won", None))
+                profit = outcome_signal.get("profit_pips", 0.0)
+            else:
+                success = getattr(outcome_signal, "success",
+                                  getattr(outcome_signal, "trade_won", None))
+                profit = getattr(outcome_signal, "profit_pips", 0.0)
+
+            if success is None:
+                logger.debug("US-361: No success/trade_won field in outcome signal — skipping threshold update")
+                return False
+
+            # Convert to 0-1 outcome
+            if isinstance(success, bool):
+                outcome = 1.0 if success else 0.0
+            else:
+                outcome = float(success)
+                outcome = max(0.0, min(1.0, outcome))
+
+            # Also factor in profit magnitude if available
+            if profit > 0:
+                outcome = min(1.0, outcome + 0.1)
+            elif profit < 0:
+                outcome = max(0.0, outcome - 0.1)
+
+            for thresh_name, thresh_val in self._last_threshold_used.items():
+                self._threshold_learner.update(
+                    name=thresh_name,
+                    context=self._threshold_context,
+                    threshold_used=thresh_val,
+                    outcome=outcome,
+                )
+            logger.info("US-361: Updated threshold posteriors from outcome — success=%s, outcome=%.2f, context=%s",
+                        success, outcome, self._threshold_context)
+            return True
+        except Exception as e:
+            logger.warning("US-361: Failed to update thresholds from outcome: %s", e)
+            return False
 
     def read_latest_signal(self) -> Optional[ReadinessSignal]:
         """Read the latest readiness signal from disk.
