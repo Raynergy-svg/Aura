@@ -1,0 +1,882 @@
+{
+  "style_drift": {
+    "morning": [
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.35,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.65,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "afternoon": [
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.35,
+        "alpha": 16.937374079999994,
+        "beta": 9.062625919999999
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.785782,
+        "beta": 2.214218
+      },
+      {
+        "value": 0.65,
+        "alpha": 2.785782,
+        "beta": 2.214218
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "evening": [
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.35,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.65,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "night": [
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.35,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.65,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ]
+  },
+  "reliability": {
+    "morning": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "afternoon": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "evening": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "night": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ]
+  },
+  "anomaly_severity": {
+    "morning": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.425,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.55,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.675,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "afternoon": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.425,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.55,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.675,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "evening": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.425,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.55,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.675,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "night": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.425,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.55,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.675,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ]
+  },
+  "bias_penalty": {
+    "morning": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "afternoon": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 17.723156079999995,
+        "beta": 9.27684392
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 2.785782,
+        "beta": 2.214218
+      }
+    ],
+    "evening": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "night": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ]
+  },
+  "override_risk": {
+    "morning": [
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.9,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "afternoon": [
+      {
+        "value": 0.5,
+        "alpha": 2.785782,
+        "beta": 2.214218
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 17.039568059999997,
+        "beta": 8.96043194
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.68358802,
+        "beta": 2.31641198
+      },
+      {
+        "value": 0.9,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "evening": [
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.9,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "night": [
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.6,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.7,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.9,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ]
+  },
+  "tilt": {
+    "morning": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.425,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.55,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.675,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "afternoon": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.425,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.55,
+        "alpha": 17.723156079999995,
+        "beta": 9.27684392
+      },
+      {
+        "value": 0.675,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.785782,
+        "beta": 2.214218
+      }
+    ],
+    "evening": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.425,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.55,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.675,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "night": [
+      {
+        "value": 0.3,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.425,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.55,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.675,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.8,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ]
+  },
+  "granularity_stress": {
+    "morning": [
+      {
+        "value": 0.1,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.3,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "afternoon": [
+      {
+        "value": 0.1,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.3,
+        "alpha": 16.253786059999996,
+        "beta": 8.746213939999999
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.785782,
+        "beta": 2.214218
+      },
+      {
+        "value": 0.5,
+        "alpha": 3.4693700200000004,
+        "beta": 2.5306299799999996
+      }
+    ],
+    "evening": [
+      {
+        "value": 0.1,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.3,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "night": [
+      {
+        "value": 0.1,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.3,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ]
+  },
+  "coherence_penalty": {
+    "morning": [
+      {
+        "value": 0.1,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.3,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "afternoon": [
+      {
+        "value": 0.1,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.3,
+        "alpha": 16.253786059999996,
+        "beta": 8.746213939999999
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 4.255152020000001,
+        "beta": 2.7448479799999994
+      }
+    ],
+    "evening": [
+      {
+        "value": 0.1,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.3,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ],
+    "night": [
+      {
+        "value": 0.1,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.2,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.3,
+        "alpha": 5.0,
+        "beta": 5.0
+      },
+      {
+        "value": 0.4,
+        "alpha": 2.0,
+        "beta": 2.0
+      },
+      {
+        "value": 0.5,
+        "alpha": 2.0,
+        "beta": 2.0
+      }
+    ]
+  }
+}

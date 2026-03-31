@@ -1,0 +1,59 @@
+{
+  "readiness_history": [
+    80.5,
+    83.5,
+    83.5,
+    83.5,
+    83.5,
+    83.5,
+    83.5
+  ],
+  "stress_history": [
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959784.831117
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959784.835487
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959786.585219
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959786.5922804
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959862.5924695
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959862.596443
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959862.6004558
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959862.6049387
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959862.6403909
+    },
+    {
+      "stress_level_score": 1.0,
+      "timestamp": 1774959862.7352357
+    }
+  ],
+  "anomaly_baseline": 80.32705055482457,
+  "anomaly_variance": 62.470939571858615,
+  "anomaly_count": 489,
+  "last_smoothed_score": 78.5782,
+  "saved_at": "2026-03-31T12:24:22.737232+00:00",
+  "phase": 20
+}
