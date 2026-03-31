@@ -1137,10 +1137,36 @@ class AuraCompanion:
                 f"  Confidence trend: {readiness.confidence_trend}",
             ])
 
+        # US-361: Phase 20 signals
+        snapshot = getattr(self.readiness, '_last_state_snapshot', None) if hasattr(self, 'readiness') else None
+        if snapshot:
+            lines.append("")
+            lines.append(f"{BOLD}Phase 20 Signals:{RESET}")
+            thresholds_active = snapshot.get("adaptive_thresholds_active", False)
+            lines.append(f"  Adaptive thresholds: {'active' if thresholds_active else 'inactive'}")
+            if snapshot.get("fatigue_index_active"):
+                comps = snapshot.get("fatigue_components", {})
+                fatigue_comp_str = f"freq={comps.get('frequency', 0):.2f}, quality={comps.get('quality', 0):.2f}" if comps else ""
+                lines.append(f"  Fatigue index: active ({fatigue_comp_str})")
+            else:
+                lines.append("  Fatigue index: inactive")
+            bias_pairs = snapshot.get("bias_interaction_pairs", [])
+            lines.append(f"  Bias interactions: {len(bias_pairs)} active pairs")
+
+        # US-361: Bridge health
+        try:
+            from src.aura.bridge.health import BridgeHealthMonitor
+            monitor = BridgeHealthMonitor()
+            report = monitor.check_all()
+            health_label = report.overall_health
+            lines.append(f"  Bridge health: {health_label}")
+        except Exception:
+            pass
+
         return "\n".join(lines)
 
     def _cmd_bridge(self) -> str:
-        """Show bridge status."""
+        """Show bridge status with US-360 BridgeHealthMonitor integration."""
         status = self.bridge.get_bridge_status()
         lines = [f"{BOLD}═══ Bridge Status ═══{RESET}"]
 
@@ -1161,6 +1187,22 @@ class AuraCompanion:
 
         ov = status["override_events"]
         lines.append(f"Override events: {ov['total_recent']} recent")
+
+        # US-360: BridgeHealthMonitor report
+        try:
+            from src.aura.bridge.health import BridgeHealthMonitor
+            bridge_dir = self.bridge.bridge_dir if hasattr(self.bridge, 'bridge_dir') else None
+            if bridge_dir is None:
+                bridge_dir = self.signal_path.parent if hasattr(self, 'signal_path') else None
+            monitor = BridgeHealthMonitor(bridge_dir)
+            report = monitor.check_all()
+            health_color = GREEN if report.overall_health == "healthy" else (YELLOW if report.overall_health == "degraded" else RED)
+            lines.append(f"\nBridge Health: {health_color}{report.overall_health.upper()}{RESET}")
+            if report.issues:
+                for issue in report.issues[:3]:
+                    lines.append(f"  ! {issue}")
+        except Exception as e:
+            logger.debug("US-360: BridgeHealthMonitor unavailable: %s", e)
 
         return "\n".join(lines)
 

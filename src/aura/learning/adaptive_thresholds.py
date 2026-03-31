@@ -34,6 +34,9 @@ DEFAULT_THRESHOLDS = {
     "bias_penalty": {"default": 0.5, "min": 0.3, "max": 0.7, "num_candidates": 5},
     "override_risk": {"default": 0.7, "min": 0.5, "max": 0.9, "num_candidates": 5},
     "tilt": {"default": 0.6, "min": 0.3, "max": 0.8, "num_candidates": 5},
+    # US-356: Phase 20 thresholds
+    "granularity_stress": {"default": 0.3, "min": 0.1, "max": 0.5, "num_candidates": 5},
+    "coherence_penalty": {"default": 0.3, "min": 0.1, "max": 0.5, "num_candidates": 5},
 }
 
 
